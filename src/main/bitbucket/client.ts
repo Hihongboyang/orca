@@ -108,7 +108,9 @@ async function requestJson<T>(
     })
     if (!response.ok) {
       await cancelUnreadResponseBody(response)
-      if (throwOnFailure) {
+      // Why: 404 is a definitive "no PR/repo", not a transport/auth failure —
+      // throwing would back the branch off for an answer that can never change.
+      if (response.status !== 404 && throwOnFailure) {
         throw new Error(`Bitbucket request failed: HTTP ${response.status}`)
       }
       return null

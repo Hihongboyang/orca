@@ -181,6 +181,15 @@ describe('Bitbucket client', () => {
     ).rejects.toThrow(/Bitbucket request failed/)
   })
 
+  it('collapses a 404 to null even in strict mode — a missing repo/PR is not a lookup failure', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ error: 'not found' }, { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      getBitbucketPullRequestForBranchOrThrow('/repo', 'feature/bitbucket')
+    ).resolves.toBeNull()
+  })
+
   it('falls back to a linked PR number when branch lookup misses', async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url.includes('/statuses/build')) {
