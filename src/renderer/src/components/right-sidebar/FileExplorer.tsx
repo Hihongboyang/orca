@@ -23,6 +23,8 @@ import { SearchResultsPane } from './SearchResultsPane'
 import { useFileSearchPanel } from './useFileSearchPanel'
 import { FileExplorerTreeStatus } from './FileExplorerTreeStatus'
 import { FileExplorerVirtualRows } from './FileExplorerVirtualRows'
+import { useSftpExplorerMenu } from './use-sftp-explorer-menu'
+import { SftpCompareDialog } from '../editor/SftpCompareDialog'
 import {
   getNameFilterCollapsedPathsAfterExpand,
   getNextNameFilterCollapsedPaths,
@@ -112,6 +114,18 @@ function FileExplorerFiles(): React.JSX.Element {
   const toggleShowDotfilesForWorktree = useAppStore((s) => s.toggleShowDotfilesForWorktree)
 
   const worktreePath = activeWorktree?.path ?? null
+  const [sftpCompare, setSftpCompare] = useState<{
+    localPath: string
+    remoteContent: string
+    profileLabel: string
+  } | null>(null)
+  const sftpRowMenu = useSftpExplorerMenu({
+    workspacePath: worktreePath,
+    // Why: SSH remote workspaces hide the SFTP submenus entirely (D10).
+    isSshWorkspace: Boolean(activeRepo?.connectionId),
+    onCompare: (content, localPath, profileLabel) =>
+      setSftpCompare({ localPath, remoteContent: content, profileLabel })
+  })
   const runtimeDownloadContext = useMemo(
     () =>
       activeRuntimeEnvironmentId && activeWorktreeId && worktreePath
@@ -802,6 +816,7 @@ function FileExplorerFiles(): React.JSX.Element {
                 dropTargetDir={dropTargetDir}
                 dragSourcePath={dragSourcePath}
                 nativeDropTargetDir={nativeDropTargetDir}
+                sftpRowMenu={sftpRowMenu}
               />
             )}
           </ScrollArea>
@@ -832,6 +847,15 @@ function FileExplorerFiles(): React.JSX.Element {
         worktreePath={worktreePath}
         onStartNew={startNew}
       />
+      {sftpCompare ? (
+        <SftpCompareDialog
+          open
+          localPath={sftpCompare.localPath}
+          remoteContent={sftpCompare.remoteContent}
+          profileLabel={sftpCompare.profileLabel}
+          onClose={() => setSftpCompare(null)}
+        />
+      ) : null}
     </>
   )
 }

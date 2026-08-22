@@ -365,6 +365,11 @@ const SshPassphraseDialog = lazy(() =>
     default: module.SshPassphraseDialog
   }))
 )
+const SftpTransferSurface = lazy(() =>
+  import('./components/sftp/SftpTransferSurface').then((module) => ({
+    default: module.SftpTransferSurface
+  }))
+)
 const UpdateCard = lazy(() =>
   import('./components/UpdateCard').then((module) => ({ default: module.UpdateCard }))
 )
@@ -1004,10 +1009,16 @@ function App(): React.JSX.Element {
                 window.api.ssh.listTargets()
               )
               const targetMap = new Map(allTargets.map((t) => [t.id, t]))
-              const targets = connectionIds.map((targetId) => ({
-                targetId,
-                needsPassphrase: targetMap.get(targetId)?.lastRequiredPassphrase ?? false
-              }))
+              const targets = connectionIds.map((targetId) => {
+                const target = targetMap.get(targetId)
+                return {
+                  targetId,
+                  // Why: a remembered credential makes reconnect prompt-free (D3) — eager, not deferred.
+                  needsPassphrase:
+                    (target?.lastRequiredPassphrase ?? false) &&
+                    target?.hasRememberedCredential !== true
+                }
+              })
 
               const eagerTargets = targets.filter((t) => !t.needsPassphrase)
               const deferredTargets = targets.filter((t) => t.needsPassphrase)
@@ -2710,6 +2721,15 @@ function App(): React.JSX.Element {
                 </RecoverableRenderErrorBoundary>
               </Suspense>
             ) : null}
+            <Suspense fallback={null}>
+              <RecoverableRenderErrorBoundary
+                boundaryId="sftp.transfer-surface"
+                surface="modal"
+                compact
+              >
+                <SftpTransferSurface />
+              </RecoverableRenderErrorBoundary>
+            </Suspense>
             <RecoverableRenderErrorBoundary
               boundaryId="modal.markdown-template-picker"
               surface="modal"

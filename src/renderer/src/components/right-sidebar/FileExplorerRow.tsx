@@ -53,6 +53,7 @@ import { translate } from '@/i18n/i18n'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/components/tab-bar/SortableTab'
 import { downloadRuntimeFile, type RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
+import { FileExplorerSftpMenu, type SftpRowMenu } from './FileExplorerSftpMenu'
 
 const isMac = navigator.userAgent.includes('Mac')
 const isLinux = navigator.userAgent.includes('Linux')
@@ -291,6 +292,8 @@ type FileExplorerRowProps = {
   onDragExpandDir: (dirPath: string) => void
   onNativeDragTargetChange: (dir: string | null) => void
   onNativeDragExpandDir: (dirPath: string) => void
+  /** Null on SSH remote workspaces — the SFTP submenus are absent entirely (D10). */
+  sftpRowMenu?: SftpRowMenu | null
 }
 
 export function shouldShowCollapseFolderAction(node: TreeNode, isExpanded: boolean): boolean {
@@ -461,7 +464,8 @@ export function FileExplorerRow({
   onDragSourceChange,
   onDragExpandDir,
   onNativeDragTargetChange,
-  onNativeDragExpandDir
+  onNativeDragExpandDir,
+  sftpRowMenu = null
 }: FileExplorerRowProps): React.JSX.Element {
   const openMarkdownPreview = useAppStore((s) => s.openMarkdownPreview)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -516,6 +520,7 @@ export function FileExplorerRow({
           return
         }
         window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
+        sftpRowMenu?.setMenuLocalPath(node.path)
         onContextMenuSelect()
       }}
     >
@@ -717,6 +722,9 @@ export function FileExplorerRow({
             <ContextMenuShortcut>{copyRelativePathShortcutLabel}</ContextMenuShortcut>
           ) : null}
         </ContextMenuItem>
+        {sftpRowMenu ? (
+          <FileExplorerSftpMenu isDirectory={node.isDirectory} menu={sftpRowMenu} />
+        ) : null}
         {!node.isDirectory && (
           <ContextMenuItem onSelect={() => onDuplicate(node)}>
             <Files />
