@@ -418,6 +418,15 @@
               "windowsPathUnknown": "Orca could not check your Windows user PATH"
             }
           }
+        },
+        "background": {
+          "session": {
+            "test": {
+              "state": {
+                "d9fa6e0979": "Terminal 1"
+              }
+            }
+          }
         }
       },
       "remotePairingCopy": {
@@ -7231,7 +7240,9 @@
           "4db9afce1c": "Port must be between 1 and 65535",
           "0e5aa04161": "Host or SSH config alias is required",
           "f1fc50dad2": "Failed to load SSH targets",
-          "0cda732f43": "Connection test failed"
+          "0cda732f43": "Connection test failed",
+          "fd64ae9b45": "Remembered credential cleared",
+          "3cf6b9959a": "Failed to clear remembered credential"
         },
         "SshPassphraseDialog": {
           "d5a234456f": "Cancel",
@@ -7246,7 +7257,8 @@
           "8a349e3fac": "Passphrase for {{value0}}",
           "cab3d5f5a5": "Password for {{value0}}",
           "1f3dde805d": "SSH Key Passphrase",
-          "106bd57f4a": "SSH Password"
+          "106bd57f4a": "SSH Password",
+          "5366e8d2f7": "Remember on this device"
         },
         "SshTargetCard": {
           "a883f5a00f": "terminal timeout: {{value0}}",
@@ -7264,7 +7276,8 @@
           "c77f1abfe3": "Ending remote terminals",
           "18968ede9e": "Error",
           "f0871e6bfb": "connect",
-          "47e94bd6ba": "connected"
+          "47e94bd6ba": "connected",
+          "0efa50c164": "Clear remembered credential"
         },
         "SshTargetDestructiveActions": {
           "7e66942808": "This will stop active terminal sessions on this SSH target. Reconnecting will not restore them.",
@@ -7949,7 +7962,12 @@
             "d6c0a9e2f4": "grok",
             "c5b9f8d1e3": "xai",
             "usagePercentageDisplayTitle": "Usage percentages",
-            "usagePercentageDisplayDescription": "Choose whether provider limits show the percentage used or remaining."
+            "usagePercentageDisplayDescription": "Choose whether provider limits show the percentage used or remaining.",
+            "b6035a3def": "语言",
+            "ab96f8a4b9": "語言",
+            "0b03f507c2": "언어",
+            "5f4779d525": "言語",
+            "3a0e3a9fdc": "Idioma"
           }
         },
         "auto": {
@@ -9245,6 +9263,22 @@
               "713c4a2f92": "Choose the default shell for new terminal panes on Windows.",
               "13715f9d23": "Default Shell"
             }
+          },
+          "advanced": {
+            "platform": {
+              "search": {
+                "77faf8be39": "Ghostty",
+                "7d383cc610": "ghostty"
+              }
+            }
+          },
+          "pane": {
+            "appearance": {
+              "search": {
+                "e0cc1b7b47": "Ghostty",
+                "1f4decdd74": "ghostty"
+              }
+            }
           }
         },
         "voice": {
@@ -10295,6 +10329,22 @@
           "body": "The terminal daemon was started by an Orca install that no longer exists, so macOS can’t attribute its commands to Orca — Accessibility and Automation grants are silently ignored (osascript fails with error -25211). Restarting the daemon fixes this; running terminal sessions will close.",
           "openManageSessions": "Open Manage Sessions",
           "title": "macOS permission grants aren’t reaching terminals"
+        },
+        "SftpProfilesSection": {
+          "c0a611137d": "Pick an SSH target",
+          "94535e58b0": "Must be an absolute path starting with /",
+          "677014ccb2": "SFTP Profiles",
+          "27e8c2be56": "Upload, download, and compare against a mirrored remote directory — workspace: {{value0}}",
+          "b8e7f05b3a": "Add profile",
+          "098799b458": "No SFTP profiles for this workspace yet.",
+          "7035d2d95f": "Delete profile",
+          "74341e3c27": "Label",
+          "61ad50a9b9": "Target",
+          "a2c419e375": "Select target…",
+          "9f69f4a20d": "Local root",
+          "4bc2d9935e": "Remote dir",
+          "77dfd2135f": "Cancel",
+          "efc007a393": "Save"
         }
       },
       "right": {
@@ -11623,6 +11673,24 @@
             "mayBeSlower": "May be slower",
             "slowest": "Slowest",
             "unlimited": "Unlimited"
+          },
+          "FileExplorerSftpMenu": {
+            "812172051a": "No SFTP profiles",
+            "64d96a2dbf": "Add SFTP profile…",
+            "39458b188d": "Upload to",
+            "b12ae8baff": "Download from",
+            "eb5edb47b6": "Compare with remote"
+          },
+          "SftpTransferNotificationCard": {
+            "39458b188d": "Upload to",
+            "b12ae8baff": "Download from",
+            "77dfd2135f": "Cancel",
+            "70afe9eff3": "Dismiss",
+            "fd3e796994": "Connecting…",
+            "a1f13b3bc2": "files",
+            "d21dc457f2": "Cancelled —",
+            "88c2e0b30e": "succeeded",
+            "5f5f8758f5": "failed"
           }
         }
       },
@@ -13505,6 +13573,10 @@
           "insertColumnRight": "Insert column right",
           "deleteRow": "Delete row",
           "deleteColumn": "Delete column"
+        },
+        "SftpCompareDialog": {
+          "8173ee67c1": "SFTP compare — {{value0}}",
+          "6eb78fac8b": "Local (left) vs remote (right), read-only — {{value0}}"
         }
       },
       "diff": {
@@ -14704,6 +14776,18 @@
         "pendingChip": "{{value0}} pending",
         "needsActionChip": "{{value0}} action required",
         "unresolvedChip": "{{value0}} unresolved"
+      },
+      "sftp": {
+        "SftpTransferSurface": {
+          "7d83602dba": "Host key confirmation failed",
+          "adc90e324c": "Verify host key",
+          "4f3f5ba9dd": "First connection to {{value0}}. Confirm the host key fingerprint (SHA256):",
+          "2b03b59293": "Reject",
+          "60b450e9d2": "Trust and continue",
+          "fac7035be8": "Host key changed — connection blocked",
+          "bbfa773e5a": "Close",
+          "7d3de269d0": "Clear trust and re-confirm"
+        }
       }
     },
     "i18n": {

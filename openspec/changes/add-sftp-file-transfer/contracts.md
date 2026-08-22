@@ -14,8 +14,8 @@ Channels follow the repo `domain:action` kebab-case convention (cf. `ssh:connect
 'sftp:profiles'          { workspacePath: string } → SftpWorkspaceProfile[]
 'sftp:save-profile'      { workspacePath: string; profile: SftpWorkspaceProfile } → SftpWorkspaceProfile // id generated on create
 'sftp:delete-profile'    { workspacePath: string; profileId: string } → void
-'sftp:upload'            { workspacePath: string; profileId: string; localPath: string } → SftpTransferResult
-'sftp:download'          { workspacePath: string; profileId: string; localPath: string } → SftpTransferResult
+'sftp:upload'            { workspacePath: string; profileId: string; localPath: string; requestId?: string } → SftpTransferResult // requestId: renderer-minted correlation key (D14)
+'sftp:download'          { workspacePath: string; profileId: string; localPath: string; requestId?: string } → SftpTransferResult
 'sftp:compare'           { workspacePath: string; profileId: string; localPath: string } → SftpCompareResult
 'sftp:cancel-transfer'   { transferId: SftpTransferId } → void
 'sftp:confirm-host-key'  { hostKey: string; fingerprint: string; accepted: boolean } → void
@@ -34,6 +34,7 @@ type SftpTransferId = string
 
 type SftpTransferProgress = {
   transferId: SftpTransferId
+  requestId?: string          // echoes the invoke's requestId (D14 correlation)
   phase: 'connecting' | 'transferring'
   filesDone: number
   filesTotal: number

@@ -114,6 +114,14 @@ Downloads create missing local parents (`mkdir -p`), create files absent locally
 
 Transfers surface as `SftpTransferNotificationCard` in the existing toast overlay area, following toast visual patterns but persistent while a transfer is in flight — progress and cancel need a stable surface. Alternatives rejected: reusing the terminal-error toast (transient — cannot host progress or cancel); a notifications-center entry (out of v1 scope; the card can seed one later).
 
+### D14. Transfer correlation via renderer-minted `requestId`
+
+`transferId` is minted in main and only reaches the renderer via progress events / the final result — too late to correlate a card opened at click time (multiple concurrent transfers make "most recent pending" racy). The renderer therefore mints an optional `requestId`, passes it on `sftp:upload`/`sftp:download`, and main echoes it on every `SftpTransferProgress` for that operation (additive field; old payloads unaffected). Cards correlate by `requestId` first, adopt the main `transferId` from the first progress event (cancel needs it), and the completion result is matched by either.
+
+### D15. Compare renders as a modal DiffViewer dialog in v1
+
+The design originally called for a read-only editor *tab*, but the editor's tab model is file-backed; a content-only diff tab would need a new tab kind across EditorContent/session persistence. v1 renders the comparison through a modal dialog reusing `DiffViewer` — the same rendering pattern as `ExternalFileChangeCompareDialog`, which the Module Map already cited as precedent. The spec scenario wording is updated to "read-only compare view"; promoting the dialog to a first-class tab is a pure follow-up (no contract change — `SftpCompareResult` is unchanged).
+
 ## UI Design
 
 All surfaces use STYLEGUIDE.md tokens and existing `ui/` primitives; no new token values. Each surface's component states: empty / loading / error / success.

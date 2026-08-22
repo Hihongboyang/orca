@@ -7003,7 +7003,9 @@
           "4db9afce1c": "El puerto debe estar entre 1 y 65535",
           "0e5aa04161": "Se requiere un host o alias de configuración SSH",
           "f1fc50dad2": "No se pudieron cargar destinos SSH",
-          "0cda732f43": "La prueba de conexión falló"
+          "0cda732f43": "La prueba de conexión falló",
+          "fd64ae9b45": "Credencial guardada borrada",
+          "3cf6b9959a": "Error al borrar la credencial guardada"
         },
         "SshPassphraseDialog": {
           "d5a234456f": "Cancelar",
@@ -7018,7 +7020,8 @@
           "8a349e3fac": "Frase de contraseña para {{value0}}",
           "cab3d5f5a5": "Contraseña para {{value0}}",
           "1f3dde805d": "Frase de contraseña de clave SSH",
-          "106bd57f4a": "Contraseña SSH"
+          "106bd57f4a": "Contraseña SSH",
+          "5366e8d2f7": "Recordar en este dispositivo"
         },
         "SshTargetCard": {
           "ec6543cee9": "Conectar",
@@ -7036,7 +7039,8 @@
           "f0871e6bfb": "conectar",
           "47e94bd6ba": "conectado",
           "a883f5a00f": "tiempo de espera del terminal: {{value0}}",
-          "8ce71262f4": "terminales hasta el reinicio"
+          "8ce71262f4": "terminales hasta el reinicio",
+          "0efa50c164": "Borrar credencial guardada"
         },
         "SshTargetDestructiveActions": {
           "7e66942808": "Esto detendrá las sesiones de terminal activas en este destino SSH. Volver a conectarse no las restaurará.",
@@ -10049,6 +10053,22 @@
           "setupRecipe": "Configura una receta de entorno para tu proveedor de nube.",
           "createWorkspace": "Crea un espacio de trabajo y selecciona esa receta en Ejecutar en.",
           "openSetup": "Configurar recetas de entorno"
+        },
+        "SftpProfilesSection": {
+          "c0a611137d": "Elije un destino SSH",
+          "94535e58b0": "Debe ser una ruta absoluta que empiece por /",
+          "677014ccb2": "Perfiles SFTP",
+          "27e8c2be56": "Sube, descarga y compara contra un directorio remoto espejo — espacio de trabajo: {{value0}}",
+          "b8e7f05b3a": "Añadir perfil",
+          "098799b458": "Aún no hay perfiles SFTP para este espacio de trabajo.",
+          "7035d2d95f": "Eliminar perfil",
+          "74341e3c27": "Etiqueta",
+          "61ad50a9b9": "Destino",
+          "a2c419e375": "Selecciona destino…",
+          "9f69f4a20d": "Raíz local",
+          "4bc2d9935e": "Directorio remoto",
+          "77dfd2135f": "Cancelar",
+          "efc007a393": "Guardar"
         }
       },
       "right": {
@@ -11358,6 +11378,24 @@
             "mayBeSlower": "Puede ser más lento",
             "slowest": "Más lento",
             "unlimited": "Sin límite"
+          },
+          "FileExplorerSftpMenu": {
+            "812172051a": "Sin perfiles SFTP",
+            "64d96a2dbf": "Añadir perfil SFTP…",
+            "39458b188d": "Subir a",
+            "b12ae8baff": "Descargar de",
+            "eb5edb47b6": "Comparar con remoto"
+          },
+          "SftpTransferNotificationCard": {
+            "39458b188d": "Subir a",
+            "b12ae8baff": "Descargar de",
+            "77dfd2135f": "Cancelar",
+            "70afe9eff3": "Cerrar",
+            "fd3e796994": "Conectando…",
+            "a1f13b3bc2": "archivos",
+            "d21dc457f2": "Cancelado — ",
+            "88c2e0b30e": "con éxito",
+            "5f5f8758f5": "fallidos"
           }
         }
       },
@@ -13215,6 +13253,10 @@
               }
             }
           }
+        },
+        "SftpCompareDialog": {
+          "8173ee67c1": "Comparación SFTP — {{value0}}",
+          "6eb78fac8b": "Local (izq.) vs remoto (der.), solo lectura — {{value0}}"
         }
       },
       "diff": {
@@ -14354,6 +14396,18 @@
         "pendingChip": "{{value0}} pendiente",
         "needsActionChip": "{{value0}} requiere acción",
         "unresolvedChip": "{{value0}} sin resolver"
+      },
+      "sftp": {
+        "SftpTransferSurface": {
+          "7d83602dba": "Error al confirmar la clave del host",
+          "adc90e324c": "Verificar clave del host",
+          "4f3f5ba9dd": "Primera conexión a {{value0}}. Confirma la huella de la clave del host (SHA256):",
+          "2b03b59293": "Rechazar",
+          "60b450e9d2": "Confiar y continuar",
+          "fac7035be8": "La clave del host cambió — conexión bloqueada",
+          "bbfa773e5a": "Cerrar",
+          "7d3de269d0": "Borrar confianza y reconfirmar"
+        }
       }
     },
     "i18n": {
