@@ -86,6 +86,7 @@ const SSH_IPC_CHANNELS = [
   'ssh:getState',
   'ssh:needsPassphrasePrompt',
   'ssh:testConnection',
+  'ssh:clearRememberedCredential',
   'ssh:addPortForward',
   'ssh:updatePortForward',
   'ssh:removePortForward',
@@ -658,11 +659,28 @@ function registerPowerMonitorReconnect(): void {
   }
 }
 
+// Why: remembered credentials live only in main; renderer payloads carry a
+// non-secret presence flag instead (contracts.md Compatibility).
+function toRendererSshTarget(target: SshTarget): SshTarget {
+  const { rememberedPassword: _pw, rememberedPassphrase: _pp, ...rest } = target
+  return target.rememberedPassword || target.rememberedPassphrase
+    ? { ...rest, hasRememberedCredential: true }
+    : rest
+}
+
+const toRendererSshTargets = (targets: SshTarget[]): SshTarget[] => targets.map(toRendererSshTarget)
+
 function createSshConnectionCallbacks(): SshConnectionCallbacks {
   return {
-    onCredentialRequest: (targetId, kind, detail) => {
+    onCredentialRequest: async (targetId, kind, detail) => {
       credentialRequestedForTarget.add(targetId)
-      return requestCredential(getCurrentMainWindow, targetId, kind, detail)
+      const answer = await requestCredential(getCurrentMainWindow, targetId, kind, detail)
+      // Why: persist only on an explicit remember opt-in with a submitted value;
+      // the current connection keeps its in-memory cache either way (D3).
+      if (answer.remember && answer.value) {
+        sshStore?.rememberCredential(targetId, kind, answer.value)
+      }
+      return answer.value
     },
     onStateChange: (targetId: string, state: SshConnectionState) => {
       if (testingTargets.has(targetId)) {
@@ -997,7 +1015,7 @@ export function registerSshHandlers(
   }
 
   ipcMain.handle('ssh:listTargets', () => {
-    return sshStore!.listTargets()
+    return toRendererSshTargets(sshStore!.listTargets())
   })
 
   ipcMain.handle('ssh:listRemovedTargetLabels', () => {
@@ -1008,13 +1026,14 @@ export function registerSshHandlers(
     const target = sshStore!.addTarget(args.target)
     // Why: re-adding a removed host can re-adopt orphaned workspaces; refresh the renderer's repo list so they move back onto the live host.
     const repoReadoptions = takeRepoReadoptions()
-    return { target, repoReadoptions }
+    return { target: toRendererSshTarget(target), repoReadoptions }
   })
 
   ipcMain.handle(
     'ssh:updateTarget',
     (_event, args: { id: string; updates: Partial<Omit<SshTarget, 'id'>> }) => {
-      return sshStore!.updateTarget(args.id, args.updates)
+      const updated = sshStore!.updateTarget(args.id, args.updates)
+      return updated ? toRendererSshTarget(updated) : updated
     }
   )
 
@@ -1025,7 +1044,14 @@ export function registerSshHandlers(
   ipcMain.handle('ssh:importConfig', (_event, args?: { reAdopt?: boolean }) => {
     const targets = sshStore!.importFromSshConfig(args)
     const repoReadoptions = takeRepoReadoptions()
-    return { targets, repoReadoptions }
+    return { targets: toRendererSshTargets(targets), repoReadoptions }
+  })
+
+  // Why: one affordance clears both kinds — users think of "the remembered
+  // credential" for a host, not password vs passphrase separately.
+  ipcMain.handle('ssh:clearRememberedCredential', (_event, args: { targetId: string }) => {
+    sshStore!.clearRememberedCredential(args.targetId, 'password')
+    sshStore!.clearRememberedCredential(args.targetId, 'passphrase')
   })
 
   // Why: add-host dialog picks one config entry to prefill the form; does not
@@ -1425,6 +1451,11 @@ export function registerSshHandlers(
   ipcMain.handle('ssh:needsPassphrasePrompt', (_event, args: { targetId: string }) => {
     const target = sshStore!.getTarget(args.targetId)
     if (!target?.lastRequiredPassphrase) {
+      return false
+    }
+    // Why: a remembered credential seeds every new connection's cache (D3), so
+    // reconnect is prompt-free even before a live connection exists.
+    if (target.rememberedPassword || target.rememberedPassphrase) {
       return false
     }
     const conn = connectionManager!.getConnection(args.targetId)

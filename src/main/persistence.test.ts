@@ -12185,3 +12185,133 @@ describe('Store native-chat tab viewMode persistence', () => {
     expect(legacyTab?.viewMode).toBeUndefined()
   })
 })
+
+describe('SFTP persistence', () => {
+  beforeEach(() => {
+    testState.dir = mkdtempSync(join(tmpdir(), 'orca-test-'))
+  })
+
+  afterEach(() => {
+    rmSync(testState.dir, { recursive: true, force: true })
+  })
+
+  it('persists SFTP profiles by workspace path and round-trips through disk', async () => {
+    const store = await createStore()
+    const saved = store.saveSftpProfile('/ws/project-a', {
+      id: '',
+      label: 'prod',
+      targetId: 'ssh-1',
+      localRoot: 'C:\\dev\\project-a',
+      defaultRemoteDir: '/srv/app'
+    })
+    expect(saved.id).not.toBe('')
+
+    store.saveSftpProfile('/ws/project-a', {
+      id: 'profile-b',
+      label: 'staging',
+      targetId: 'ssh-2',
+      localRoot: 'C:\\dev\\project-a\\dist',
+      defaultRemoteDir: '/srv/stg'
+    })
+
+    // Workspace isolation: another workspace starts empty.
+    expect(store.getSftpProfiles('/ws/project-b')).toEqual([])
+
+    store.flush()
+    const persisted = readDataFile() as Record<string, unknown>
+    const byWorkspace = persisted['sftp-profiles'] as Record<string, unknown[]>
+    expect(byWorkspace['/ws/project-a']).toHaveLength(2)
+
+    const reloaded = await createStore()
+    const profiles = reloaded.getSftpProfiles('/ws/project-a')
+    expect(profiles.map((p) => p.label).sort()).toEqual(['prod', 'staging'])
+    expect(profiles.find((p) => p.id === saved.id)?.targetId).toBe('ssh-1')
+
+    reloaded.deleteSftpProfile('/ws/project-a', 'profile-b')
+    reloaded.flush()
+    const afterDelete = readDataFile() as Record<string, unknown>
+    const remaining = (afterDelete['sftp-profiles'] as Record<string, unknown[]>)['/ws/project-a']
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]).toMatchObject({ id: saved.id, label: 'prod' })
+  })
+
+  it('persists and clears the SFTP host-trust store', async () => {
+    const store = await createStore()
+    expect(store.getSftpHostTrust('10.0.0.5:22')).toBeUndefined()
+
+    store.setSftpHostTrust('10.0.0.5:22', 'a1b2c3')
+    store.setSftpHostTrust('10.1.0.9:2222', 'd4e5f6')
+    expect(store.getSftpHostTrust('10.0.0.5:22')).toBe('a1b2c3')
+
+    store.flush()
+    const persisted = readDataFile() as Record<string, unknown>
+    expect(persisted['sftp-host-trust']).toEqual({
+      '10.0.0.5:22': 'a1b2c3',
+      '10.1.0.9:2222': 'd4e5f6'
+    })
+
+    const reloaded = await createStore()
+    expect(reloaded.getSftpHostTrust('10.1.0.9:2222')).toBe('d4e5f6')
+
+    reloaded.clearSftpHostTrust('10.0.0.5:22')
+    reloaded.flush()
+    const afterClear = readDataFile() as Record<string, unknown>
+    expect(afterClear['sftp-host-trust']).toEqual({ '10.1.0.9:2222': 'd4e5f6' })
+  })
+
+  it('encrypts remembered SSH credentials through sentinel slots', async () => {
+    const store = await createStore()
+    store.addSshTarget({
+      id: 'ssh-cred-1',
+      label: 'cred host',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy',
+      rememberedPassword: 'hunter2-secret',
+      rememberedPassphrase: 'open-sesame'
+    })
+
+    // In-memory state stays plaintext for the auth path.
+    const target = store.getSshTarget('ssh-cred-1')
+    expect(target?.rememberedPassword).toBe('hunter2-secret')
+    expect(target?.rememberedPassphrase).toBe('open-sesame')
+
+    store.flush()
+    const rawDisk = readFileSync(dataFile(), 'utf-8')
+    expect(rawDisk).not.toContain('hunter2-secret')
+    expect(rawDisk).not.toContain('open-sesame')
+    const persisted = readDataFile() as { sshTargets?: Record<string, unknown>[] }
+    const onDisk = persisted.sshTargets?.find((t) => t.id === 'ssh-cred-1')
+    expect(onDisk?.rememberedPassword).toBe(
+      Buffer.from('encrypted:hunter2-secret').toString('base64')
+    )
+
+    const reloaded = await createStore()
+    const reloadedTarget = reloaded.getSshTarget('ssh-cred-1')
+    expect(reloadedTarget?.rememberedPassword).toBe('hunter2-secret')
+    expect(reloadedTarget?.rememberedPassphrase).toBe('open-sesame')
+  })
+
+  it('treats undecryptable remembered credentials as absent', async () => {
+    writeDataFile({
+      ...getDefaultPersistedState(testState.dir),
+      sshTargets: [
+        {
+          id: 'ssh-garbage',
+          label: 'garbage cred host',
+          host: '10.0.0.5',
+          port: 22,
+          username: 'deploy',
+          rememberedPassword: 'not-valid-ciphertext',
+          rememberedPassphrase: 'also-not-valid'
+        }
+      ]
+    })
+
+    const store = await createStore()
+    const target = store.getSshTarget('ssh-garbage')
+    expect(target?.rememberedPassword).toBeUndefined()
+    expect(target?.rememberedPassphrase).toBeUndefined()
+    expect(target?.host).toBe('10.0.0.5')
+  })
+})

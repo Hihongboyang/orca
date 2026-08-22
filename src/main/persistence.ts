@@ -107,6 +107,11 @@ import {
   type SshRemotePtyLease,
   type SshTarget
 } from '../shared/ssh-types'
+import type {
+  SftpHostTrustStore,
+  SftpProfilesByWorkspace,
+  SftpWorkspaceProfile
+} from '../shared/sftp-types'
 import { isFolderRepo } from '../shared/repo-kind'
 import {
   getRepoExecutionHostId,
@@ -320,6 +325,32 @@ function decrypt(ciphertext: string): string {
 
 function decryptOptionalSecret(value: string | null | undefined): string | null {
   return value ? decrypt(value) : null
+}
+
+// Why: unlike decrypt(), a remembered SSH credential must NOT fall back to the
+// raw ciphertext — a keychain reset would silently feed garbage to auth.
+function decryptRememberedCredential(value: string | undefined): string | undefined {
+  if (value === undefined || value === '') {
+    return undefined
+  }
+  if (!safeStorageEncryptionAvailable()) {
+    return value
+  }
+  try {
+    return safeStorage.decryptString(Buffer.from(value, 'base64'))
+  } catch {
+    console.warn('[persistence] remembered SSH credential undecryptable — treating as absent')
+    return undefined
+  }
+}
+
+function decryptRememberedSshCredentials(target: SshTarget): SshTarget {
+  const password = decryptRememberedCredential(target.rememberedPassword)
+  const passphrase = decryptRememberedCredential(target.rememberedPassphrase)
+  if (password === target.rememberedPassword && passphrase === target.rememberedPassphrase) {
+    return target
+  }
+  return { ...target, rememberedPassword: password, rememberedPassphrase: passphrase }
 }
 
 function retireLegacyInstructionsForClearedTextActionRecipes(
@@ -1224,6 +1255,8 @@ function normalizeSshTarget(t: SshTarget): SshTarget {
   delete target.relayGracePeriodSeconds
   delete target.systemSshConnectionReuse
   delete target.experimentalPtySourceCreditV1
+  // Why: IPC-boundary derived flag; must never persist.
+  delete target.hasRememberedCredential
   // Why: prefer the synced grace over stale relayGracePeriodSeconds so a user's "unlimited" (0) survives migration.
   const relayGracePeriodSeconds =
     legacySyncEnabled === true && typeof legacyGracePeriodSeconds === 'number'
@@ -1244,6 +1277,50 @@ function normalizeSshTarget(t: SshTarget): SshTarget {
     normalized.systemSshConnectionReuse = false
   }
   return normalized
+}
+
+function isSftpWorkspaceProfile(value: unknown): value is SftpWorkspaceProfile {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const profile = value as Partial<SftpWorkspaceProfile>
+  return (
+    typeof profile.id === 'string' &&
+    typeof profile.label === 'string' &&
+    typeof profile.targetId === 'string' &&
+    typeof profile.localRoot === 'string' &&
+    typeof profile.defaultRemoteDir === 'string'
+  )
+}
+
+function normalizeSftpProfiles(value: unknown): SftpProfilesByWorkspace {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+  const result: SftpProfilesByWorkspace = {}
+  for (const [workspacePath, profiles] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(profiles)) {
+      continue
+    }
+    const valid = profiles.filter(isSftpWorkspaceProfile)
+    if (valid.length > 0) {
+      result[workspacePath] = valid
+    }
+  }
+  return result
+}
+
+function normalizeSftpHostTrust(value: unknown): SftpHostTrustStore {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+  const result: SftpHostTrustStore = {}
+  for (const [hostKey, fingerprint] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof fingerprint === 'string' && fingerprint !== '') {
+      result[hostKey] = fingerprint
+    }
+  }
+  return result
 }
 
 // Why: strict whitelist rejects unknown/bad-typed keys; returns Partial so partial updates don't clobber valid persisted state.
@@ -3646,7 +3723,11 @@ export class Store {
             parsed.workspaceSessionsByHostId,
             defaults.workspaceSession
           ),
-          sshTargets: (parsed.sshTargets ?? []).map(normalizeSshTarget),
+          sshTargets: (parsed.sshTargets ?? [])
+            .map(normalizeSshTarget)
+            .map(decryptRememberedSshCredentials),
+          'sftp-profiles': normalizeSftpProfiles(parsed['sftp-profiles']),
+          'sftp-host-trust': normalizeSftpHostTrust(parsed['sftp-host-trust']),
           deletedSshConfigAliases: Array.isArray(parsed.deletedSshConfigAliases)
             ? parsed.deletedSshConfigAliases.filter(
                 (alias): alias is string => typeof alias === 'string'
@@ -3925,6 +4006,15 @@ export class Store {
       sshPtyConsumerRecoveries: (this.state.sshPtyConsumerRecoveries ?? []).map((record) => ({
         ...record,
         ownerLease: encryptToSentinel(record.ownerLease)
+      })),
+      sshTargets: (this.state.sshTargets ?? []).map((target) => ({
+        ...target,
+        rememberedPassword: target.rememberedPassword
+          ? encryptToSentinel(target.rememberedPassword)
+          : undefined,
+        rememberedPassphrase: target.rememberedPassphrase
+          ? encryptToSentinel(target.rememberedPassphrase)
+          : undefined
       })),
       settings: {
         ...this.state.settings,
@@ -6839,6 +6929,57 @@ export class Store {
     }
     this.state.sshTargets = nextTargets
     this.state.sshPtyConsumerRecoveries = nextRecoveries
+    this.scheduleSave()
+  }
+
+  // ── SFTP profiles & host trust ────────────────────────────────────
+
+  getSftpProfiles(workspacePath: string): SftpWorkspaceProfile[] {
+    return [...(this.state['sftp-profiles']?.[workspacePath] ?? [])]
+  }
+
+  saveSftpProfile(workspacePath: string, profile: SftpWorkspaceProfile): SftpWorkspaceProfile {
+    const saved: SftpWorkspaceProfile =
+      profile.id === '' ? { ...profile, id: randomUUID() } : profile
+    this.state['sftp-profiles'] ??= {}
+    const existing = this.state['sftp-profiles'][workspacePath] ?? []
+    const index = existing.findIndex((candidate) => candidate.id === saved.id)
+    if (index >= 0) {
+      existing[index] = saved
+    } else {
+      existing.push(saved)
+    }
+    this.state['sftp-profiles'][workspacePath] = existing
+    this.scheduleSave()
+    return { ...saved }
+  }
+
+  deleteSftpProfile(workspacePath: string, profileId: string): void {
+    const existing = this.state['sftp-profiles']?.[workspacePath]
+    if (!existing?.some((candidate) => candidate.id === profileId)) {
+      return
+    }
+    this.state['sftp-profiles']![workspacePath] = existing.filter(
+      (candidate) => candidate.id !== profileId
+    )
+    this.scheduleSave()
+  }
+
+  getSftpHostTrust(hostKey: string): string | undefined {
+    return this.state['sftp-host-trust']?.[hostKey]
+  }
+
+  setSftpHostTrust(hostKey: string, fingerprint: string): void {
+    this.state['sftp-host-trust'] ??= {}
+    this.state['sftp-host-trust'][hostKey] = fingerprint
+    this.scheduleSave()
+  }
+
+  clearSftpHostTrust(hostKey: string): void {
+    if (!(hostKey in (this.state['sftp-host-trust'] ?? {}))) {
+      return
+    }
+    delete this.state['sftp-host-trust']![hostKey]
     this.scheduleSave()
   }
 

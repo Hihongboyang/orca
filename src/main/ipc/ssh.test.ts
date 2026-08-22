@@ -486,6 +486,46 @@ describe('SSH IPC handlers', () => {
     expect(result).toEqual(mockTargets)
   })
 
+  it('strips remembered credentials from every renderer-facing target payload', async () => {
+    const withSecrets: SshTarget[] = [
+      {
+        id: 'ssh-1',
+        label: 'Server 1',
+        host: 'srv1.com',
+        port: 22,
+        username: 'admin',
+        rememberedPassword: 'hunter2',
+        rememberedPassphrase: 'phrase'
+      }
+    ]
+
+    mockSshStore.listTargets.mockReturnValue(withSecrets)
+    const listed = (await handlers.get('ssh:listTargets')!(null, {})) as SshTarget[]
+    expect(listed[0]).not.toHaveProperty('rememberedPassword')
+    expect(listed[0]).not.toHaveProperty('rememberedPassphrase')
+    // Why: renderer needs a non-secret signal to show the clear affordance.
+    expect(listed[0].hasRememberedCredential).toBe(true)
+
+    mockSshStore.addTarget.mockReturnValue({ ...withSecrets[0] })
+    const added = (await handlers.get('ssh:addTarget')!(null, {
+      target: { label: 'x', host: 'h', port: 22, username: 'u' }
+    })) as { target: SshTarget }
+    expect(added.target).not.toHaveProperty('rememberedPassword')
+
+    mockSshStore.updateTarget.mockReturnValue({ ...withSecrets[0] })
+    const updated = (await handlers.get('ssh:updateTarget')!(null, {
+      id: 'ssh-1',
+      updates: {}
+    })) as SshTarget
+    expect(updated).not.toHaveProperty('rememberedPassphrase')
+
+    mockSshStore.importFromSshConfig.mockReturnValue([...withSecrets])
+    const imported = (await handlers.get('ssh:importConfig')!(null, {})) as {
+      targets: SshTarget[]
+    }
+    expect(imported.targets[0]).not.toHaveProperty('rememberedPassword')
+  })
+
   it('ssh:addTarget calls store.addTarget', async () => {
     const newTarget = {
       label: 'New Server',
@@ -907,6 +947,37 @@ describe('SSH IPC handlers', () => {
 
     const result = await handlers.get('ssh:importConfig')!(null, {})
     expect(result).toEqual({ targets: imported, repoReadoptions: [] })
+  })
+
+  it('a remembered credential makes passphrase-requiring reconnects prompt-free', async () => {
+    // Why: no live connection yet — this is the startup-reconnect partitioning
+    // state; a remembered credential must count as cached so reconnect is eager.
+    mockConnectionManager.getConnection.mockReturnValue(undefined)
+
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'prod',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy',
+      lastRequiredPassphrase: true,
+      rememberedPassword: 'hunter2'
+    })
+    expect(await handlers.get('ssh:needsPassphrasePrompt')!(null, { targetId: 'ssh-1' })).toBe(
+      false
+    )
+
+    // Why: clearing the credential must restore the prompt path (spec: cleared
+    // credential prompts again).
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'prod',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy',
+      lastRequiredPassphrase: true
+    })
+    expect(await handlers.get('ssh:needsPassphrasePrompt')!(null, { targetId: 'ssh-1' })).toBe(true)
   })
 
   it('ssh:listConfigHosts loads summaries against current targets', async () => {

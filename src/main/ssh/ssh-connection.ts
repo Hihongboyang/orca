@@ -144,6 +144,11 @@ export class SshConnection {
   constructor(target: SshTarget, callbacks: SshConnectionCallbacks) {
     this.target = target
     this.callbacks = callbacks
+    // Why: remembered credentials (D3) seed the cache at construction so new
+    // connections authenticate without prompting and startup reconnect
+    // partitioning (hasCachedCredential) treats them as cached.
+    this.cachedPassphrase = target.rememberedPassphrase ?? null
+    this.cachedPassword = target.rememberedPassword ?? null
     this.state = {
       targetId: target.id,
       status: 'disconnected',
@@ -708,7 +713,6 @@ export class SshConnection {
     if (this.cachedPassword) {
       config.password = this.cachedPassword
     }
-
     try {
       await this.doSsh2Connect(config, connectGeneration)
     } catch (err) {
