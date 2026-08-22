@@ -42,6 +42,7 @@ import type {
   PortForwardEntry,
   EnrichedDetectedPort
 } from '../shared/ssh-types'
+import type { SftpTransferProgress, SftpWorkspaceProfile } from '../shared/sftp-types'
 import {
   admitSshConnectionStateForAuthorityReconciliation,
   admitSshDetectedPorts
@@ -4460,6 +4461,64 @@ const api = {
     getStatus: (): Promise<GrokAccountStatus> => ipcRenderer.invoke('grokAccounts:getStatus')
   },
 
+  sftp: {
+    listProfiles: (args: { workspacePath: string }) => ipcRenderer.invoke('sftp:profiles', args),
+    saveProfile: (args: { workspacePath: string; profile: SftpWorkspaceProfile }) =>
+      ipcRenderer.invoke('sftp:save-profile', args),
+    deleteProfile: (args: { workspacePath: string; profileId: string }) =>
+      ipcRenderer.invoke('sftp:delete-profile', args),
+    upload: (args: {
+      workspacePath: string
+      profileId: string
+      localPath: string
+      requestId?: string
+    }) => ipcRenderer.invoke('sftp:upload', args),
+    download: (args: {
+      workspacePath: string
+      profileId: string
+      localPath: string
+      requestId?: string
+    }) => ipcRenderer.invoke('sftp:download', args),
+    compare: (args: { workspacePath: string; profileId: string; localPath: string }) =>
+      ipcRenderer.invoke('sftp:compare', args),
+    cancelTransfer: (args: { transferId: string }) =>
+      ipcRenderer.invoke('sftp:cancel-transfer', args),
+    confirmHostKey: (args: { hostKey: string; fingerprint: string; accepted: boolean }) =>
+      ipcRenderer.invoke('sftp:confirm-host-key', args),
+    clearHostTrust: (args: { hostKey: string }) =>
+      ipcRenderer.invoke('sftp:clear-host-trust', args),
+    onProfilesChanged: (callback: (profiles: SftpWorkspaceProfile[]) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        profiles: SftpWorkspaceProfile[]
+      ): void => {
+        callback(profiles)
+      }
+      ipcRenderer.on('sftp:profiles-changed', listener)
+      return () => ipcRenderer.removeListener('sftp:profiles-changed', listener)
+    },
+    onTransferProgress: (callback: (progress: SftpTransferProgress) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        progress: SftpTransferProgress
+      ): void => {
+        callback(progress)
+      }
+      ipcRenderer.on('sftp:transfer-progress', listener)
+      return () => ipcRenderer.removeListener('sftp:transfer-progress', listener)
+    },
+    onHostKeyRequired: (callback: (request: { hostKey: string; fingerprint: string }) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        request: { hostKey: string; fingerprint: string }
+      ): void => {
+        callback(request)
+      }
+      ipcRenderer.on('sftp:host-key-required', listener)
+      return () => ipcRenderer.removeListener('sftp:host-key-required', listener)
+    }
+  },
+
   ssh: {
     listTargets: (): Promise<SshTarget[]> => ipcRenderer.invoke('ssh:listTargets'),
 
@@ -4507,6 +4566,9 @@ const api = {
 
     needsPassphrasePrompt: (args: { targetId: string }): Promise<boolean> =>
       ipcRenderer.invoke('ssh:needsPassphrasePrompt', args),
+
+    clearRememberedCredential: (args: { targetId: string }): Promise<void> =>
+      ipcRenderer.invoke('ssh:clearRememberedCredential', args),
 
     testConnection: async (args: {
       targetId: string
@@ -4620,8 +4682,11 @@ const api = {
       return () => ipcRenderer.removeListener('ssh:credential-resolved', listener)
     },
 
-    submitCredential: (args: { requestId: string; value: string | null }): Promise<void> =>
-      ipcRenderer.invoke('ssh:submitCredential', args)
+    submitCredential: (args: {
+      requestId: string
+      value: string | null
+      remember?: boolean
+    }): Promise<void> => ipcRenderer.invoke('ssh:submitCredential', args)
   },
 
   automations: {

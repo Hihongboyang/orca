@@ -68,6 +68,10 @@ async function uploadFileAndJoinTeardown(
       flags: options?.exclusive ? 'wx' : 'w'
     })
     readStream = handle.createReadStream({ autoClose: false })
+    // Why: persistent no-op listeners — finished()'s cleanup removes its own,
+    // and a late ssh2 teardown emit('error') with no listener throws uncaught.
+    readStream.on('error', () => {})
+    writeStream.on('error', () => {})
     const abortTransfer = (): void => {
       const reason =
         options?.signal?.reason instanceof Error
@@ -182,7 +186,12 @@ export async function uploadDirectory(
   localDir: string,
   remoteDir: string,
   rootRealPath = localDir,
-  options?: { exclusive?: boolean; signal?: AbortSignal }
+  options?: {
+    exclusive?: boolean
+    signal?: AbortSignal
+    /** Upload-ignore parity (D6): return true to skip a local path. */
+    shouldSkip?: (localPath: string) => boolean
+  }
 ): Promise<void> {
   options?.signal?.throwIfAborted()
   await assertLocalUploadPathInsideRoot(rootRealPath, localDir)
@@ -190,6 +199,9 @@ export async function uploadDirectory(
   for (const entry of entries) {
     options?.signal?.throwIfAborted()
     const localPath = pathJoin(localDir, entry.name)
+    if (options?.shouldSkip?.(localPath) === true) {
+      continue
+    }
     const remotePath = `${remoteDir}/${entry.name}`
     await assertLocalUploadPathInsideRoot(rootRealPath, localPath)
     const statResult = await lstat(localPath)
@@ -269,7 +281,7 @@ function rmdirSftp(sftp: SFTPWrapper, remoteDir: string): Promise<void> {
   })
 }
 
-async function assertLocalUploadPathInsideRoot(
+export async function assertLocalUploadPathInsideRoot(
   rootRealPath: string,
   candidatePath: string
 ): Promise<void> {

@@ -11,6 +11,12 @@ import type {
 import type { NativeFileDropPayload } from '../shared/native-file-drop'
 import type { BrowserFindSource } from '../shared/browser-find-source'
 import type {
+  SftpCompareResult,
+  SftpTransferProgress,
+  SftpTransferResult,
+  SftpWorkspaceProfile
+} from '../shared/sftp-types'
+import type {
   DashboardRevealAgentArgs,
   DashboardSleepWorkspaceArgs,
   DashboardSnapshot,
@@ -3467,6 +3473,43 @@ export type PreloadApi = {
   grokAccounts: {
     getStatus: () => Promise<GrokAccountStatus>
   }
+  sftp: {
+    listProfiles: (args: { workspacePath: string }) => Promise<SftpWorkspaceProfile[]>
+    saveProfile: (args: {
+      workspacePath: string
+      profile: SftpWorkspaceProfile
+    }) => Promise<SftpWorkspaceProfile>
+    deleteProfile: (args: { workspacePath: string; profileId: string }) => Promise<void>
+    upload: (args: {
+      workspacePath: string
+      profileId: string
+      localPath: string
+      requestId?: string
+    }) => Promise<SftpTransferResult>
+    download: (args: {
+      workspacePath: string
+      profileId: string
+      localPath: string
+      requestId?: string
+    }) => Promise<SftpTransferResult>
+    compare: (args: {
+      workspacePath: string
+      profileId: string
+      localPath: string
+    }) => Promise<SftpCompareResult>
+    cancelTransfer: (args: { transferId: string }) => Promise<void>
+    confirmHostKey: (args: {
+      hostKey: string
+      fingerprint: string
+      accepted: boolean
+    }) => Promise<void>
+    clearHostTrust: (args: { hostKey: string }) => Promise<void>
+    onProfilesChanged: (callback: (profiles: SftpWorkspaceProfile[]) => void) => () => void
+    onTransferProgress: (callback: (progress: SftpTransferProgress) => void) => () => void
+    onHostKeyRequired: (
+      callback: (request: { hostKey: string; fingerprint: string }) => void
+    ) => () => void
+  }
   ssh: {
     listTargets: () => Promise<SshTarget[]>
     // Removed-target id → last known label, for a friendly host name on workspaces still pinned to a removed target.
@@ -3486,6 +3529,7 @@ export type PreloadApi = {
     resetRelay: (args: { targetId: string }) => Promise<void>
     getState: (args: { targetId: string }) => Promise<SshConnectionState | null>
     needsPassphrasePrompt: (args: { targetId: string }) => Promise<boolean>
+    clearRememberedCredential: (args: { targetId: string }) => Promise<void>
     testConnection: (args: {
       targetId: string
     }) => Promise<{ success: boolean; error?: string; state?: SshConnectionState }>
@@ -3530,7 +3574,11 @@ export type PreloadApi = {
       }) => void
     ) => () => void
     onCredentialResolved: (callback: (data: { requestId: string }) => void) => () => void
-    submitCredential: (args: { requestId: string; value: string | null }) => Promise<void>
+    submitCredential: (args: {
+      requestId: string
+      value: string | null
+      remember?: boolean
+    }) => Promise<void>
   }
   automations: {
     list: () => Promise<Automation[]>
