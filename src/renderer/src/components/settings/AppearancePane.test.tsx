@@ -26,7 +26,10 @@ const mocks = vi.hoisted(() => ({
     setUsagePercentageDisplay: vi.fn(),
     recordFeatureInteraction: vi.fn(),
     setWorktreeCardMode: vi.fn(),
-    appearanceAccordionDeepLink: null as 'interface' | 'terminal' | 'window' | null,
+    appearanceAccordionDeepLink: null as {
+      section: 'interface' | 'terminal' | 'window'
+      settingId?: string
+    } | null,
     clearAppearanceAccordionDeepLink: vi.fn()
   }
 }))
@@ -630,7 +633,7 @@ describe('AppearancePane', () => {
     expect(windowToggle?.getAttribute('aria-expanded')).toBe('false')
     expect(terminalToggle?.getAttribute('aria-expanded')).toBe('true')
 
-    mocks.state.appearanceAccordionDeepLink = 'window'
+    mocks.state.appearanceAccordionDeepLink = { section: 'window' }
     await rerenderAppearancePane()
 
     expect(appearanceSectionToggle(container, 'window')?.getAttribute('aria-expanded')).toBe('true')

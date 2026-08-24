@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- Why: preload is the audited renderer/Electron IPC contract; co-locating the surface eases security and type-drift review. */
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { BackgroundImage } from '../shared/background-image-settings'
 import { preloadE2EConfig } from './e2e-config'
 import { glApi } from './gitlab'
 import type { AppIdentity } from '../shared/app-identity'
@@ -2672,6 +2673,14 @@ const api = {
       ipcRenderer.invoke('pet:read', id, fileName, kind),
     delete: (id: string, fileName: string, kind?: 'image' | 'bundle'): Promise<void> =>
       ipcRenderer.invoke('pet:delete', id, fileName, kind)
+  },
+
+  backgroundImage: {
+    import: (): Promise<BackgroundImage | null> => ipcRenderer.invoke('background-image:import'),
+    read: (id: string, fileName: string): Promise<ArrayBuffer | null> =>
+      ipcRenderer.invoke('background-image:read', id, fileName),
+    delete: (id: string, fileName: string): Promise<void> =>
+      ipcRenderer.invoke('background-image:delete', id, fileName)
   },
 
   browser: {

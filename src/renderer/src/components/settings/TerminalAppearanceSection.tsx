@@ -37,6 +37,7 @@ import type { UseWarpThemeImportReturn } from './useWarpThemeImport'
 import { isWebClientLocation } from '@/hooks/useSettingsNavigationMetadata'
 import ghosttyIcon from '../../../../../resources/ghostty.svg'
 import { translate } from '@/i18n/i18n'
+import { TERMINAL_BACKGROUND_OPACITY_SETTING_ID } from './terminal-window-setup-search'
 
 type TerminalAppearanceSectionProps = {
   settings: GlobalSettings
@@ -81,6 +82,12 @@ export function TerminalAppearanceSection({
 }: TerminalAppearanceSectionProps): React.JSX.Element {
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
   const isSearching = normalizeSettingsSearchQuery(searchQuery).length > 0
+  // Why: a deep link to terminal background opacity targets a row inside the
+  // advanced disclosure — read the one-shot link during this render (Appearance
+  // Pane clears it in a layout effect) so the disclosure is already open.
+  const accordionDeepLink = useAppStore((state) => state.appearanceAccordionDeepLink)
+  const forceAdvancedForDeepLink =
+    accordionDeepLink?.settingId === TERMINAL_BACKGROUND_OPACITY_SETTING_ID
   const [themeSearch, setThemeSearch] = useState('')
   const [previewFontFamily, setPreviewFontFamily] = useState<string | null>(null)
   const showWarpThemeImport = !isWebClientLocation()
@@ -156,6 +163,7 @@ export function TerminalAppearanceSection({
       showTopBorder={false}
       className="mt-0 pt-2"
       contentClassName="ml-4 pt-4"
+      forceExpanded={forceAdvancedForDeepLink}
     >
       {advancedGroups.map((group, index) => (
         <div

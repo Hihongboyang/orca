@@ -791,9 +791,13 @@ export type UISlice = {
     setupId?: string
   ) => void
   /** One-shot Appearance accordion to expand for nested Settings deep links (e.g. Usage percentages under Window & Sidebar). Cleared when Appearance consumes it. */
-  appearanceAccordionDeepLink: 'interface' | 'terminal' | 'window' | null
+  appearanceAccordionDeepLink: {
+    section: 'interface' | 'terminal' | 'window'
+    /** Row to scroll to after the section expands; falls back to the usage-percentage row when omitted (legacy callers). */
+    settingId?: string
+  } | null
   setAppearanceAccordionDeepLink: (
-    section: NonNullable<UISlice['appearanceAccordionDeepLink']>
+    deepLink: NonNullable<UISlice['appearanceAccordionDeepLink']>
   ) => void
   clearAppearanceAccordionDeepLink: () => void
   activeModal:
@@ -1613,7 +1617,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
       }
     }),
   appearanceAccordionDeepLink: null,
-  setAppearanceAccordionDeepLink: (section) => set({ appearanceAccordionDeepLink: section }),
+  setAppearanceAccordionDeepLink: (deepLink) => set({ appearanceAccordionDeepLink: deepLink }),
   clearAppearanceAccordionDeepLink: () => set({ appearanceAccordionDeepLink: null }),
 
   activeModal: 'none',

@@ -1,6 +1,7 @@
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 import { translate } from '@/i18n/i18n'
 import { translateSearchKeyword } from './settings-search-keywords'
+import { TERMINAL_BACKGROUND_OPACITY_SETTING_ID } from './terminal-window-setup-search'
 
 /** Stable Settings deep-link / scroll target for the Used/Remaining control. */
 export const USAGE_PERCENTAGE_DISPLAY_SETTING_ID = 'usage-percentage-display'
@@ -17,6 +18,10 @@ export function resolveAppearanceAccordionDeepLink(
 ): AppearanceAccordionSection | null {
   if (sectionId === USAGE_PERCENTAGE_DISPLAY_SETTING_ID) {
     return 'window'
+  }
+  // Why: the row lives inside Terminal's advanced disclosure — expand Terminal first.
+  if (sectionId === TERMINAL_BACKGROUND_OPACITY_SETTING_ID) {
+    return 'terminal'
   }
   return null
 }

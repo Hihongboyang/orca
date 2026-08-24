@@ -14,6 +14,7 @@ import { USAGE_PERCENTAGE_DISPLAY_SETTING_ID } from './appearance-usage-percenta
 import {
   getAppIconEntries,
   getAppearancePaneSearchEntries,
+  getBackgroundImageEntries,
   getLanguageEntries,
   getLayoutEntries,
   getMenuBarIconEntries,
@@ -97,12 +98,13 @@ export function AppearancePane({
     if (!appearanceAccordionDeepLink) {
       return
     }
+    const { section, settingId } = appearanceAccordionDeepLink
     setOpenSections((current) => {
-      if (current.has(appearanceAccordionDeepLink)) {
+      if (current.has(section)) {
         return current
       }
       const next = new Set(current)
-      next.add(appearanceAccordionDeepLink)
+      next.add(section)
       return next
     })
     clearAppearanceAccordionDeepLink()
@@ -110,7 +112,7 @@ export function AppearancePane({
     // has non-zero height when Settings (or this fallback) scrolls.
     const frameId = requestAnimationFrame(() => {
       document
-        .getElementById(USAGE_PERCENTAGE_DISPLAY_SETTING_ID)
+        .getElementById(settingId ?? USAGE_PERCENTAGE_DISPLAY_SETTING_ID)
         ?.scrollIntoView({ block: 'nearest' })
     })
     return () => {
@@ -138,6 +140,7 @@ export function AppearancePane({
   const interfaceSearchEntries = [
     { title: interfaceTitle },
     ...getThemeEntries(),
+    ...getBackgroundImageEntries(),
     ...getZoomEntries(),
     ...getTypographyEntries(),
     ...(SHOW_UI_LANGUAGE_SETTING ? getLanguageEntries() : []),

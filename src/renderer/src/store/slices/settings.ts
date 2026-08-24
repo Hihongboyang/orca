@@ -22,6 +22,7 @@ import {
 } from '../../../../shared/tui-agent-launch-defaults'
 import { bumpProviderRuntimeSessionGeneration } from '@/lib/provider-runtime-context'
 import { normalizeUiLanguage } from '../../../../shared/ui-language'
+import { normalizeBackgroundImageOpacity } from '../../../../shared/background-image-settings'
 import { normalizeDesktopTerminalScrollbackRows } from '../../../../shared/terminal-scrollback-policy'
 import { translate } from '@/i18n/i18n'
 import {
@@ -113,6 +114,11 @@ function normalizeSettingsUpdates(
   }
   if ('uiLanguage' in updates) {
     sanitizedUpdates.uiLanguage = normalizeUiLanguage(updates.uiLanguage)
+  }
+  if ('backgroundImageOpacity' in updates) {
+    sanitizedUpdates.backgroundImageOpacity = normalizeBackgroundImageOpacity(
+      updates.backgroundImageOpacity
+    )
   }
   if ('terminalScrollbackRows' in updates) {
     sanitizedUpdates.terminalScrollbackRows = normalizeDesktopTerminalScrollbackRows(

@@ -76,6 +76,8 @@ describe('getTabRootStateClasses', () => {
     expect(classes).toContain('bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))]')
     expect(classes).toContain('text-foreground')
     expect(classes).not.toContain('hover:text-foreground')
+    // Why: wallpaper mode retargets the plate via this marker (main.css).
+    expect(classes).toContain('tab-plate-active')
   })
 
   it('returns the shared inactive-tab surface treatment', () => {
@@ -83,5 +85,6 @@ describe('getTabRootStateClasses', () => {
     expect(classes).toContain('bg-card')
     expect(classes).toContain('text-muted-foreground')
     expect(classes).toContain('hover:text-foreground')
+    expect(classes).toContain('tab-plate-inactive')
   })
 })

@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConfirmationDialogProvider } from './components/confirmation-dialog'
 import { BrowserWebAuthnAccountDialog } from './components/browser-webauthn-account-dialog'
 import { LinkRoutingPreferenceDialogProvider } from './components/link-routing-preference-dialog'
+import { useAppBackgroundImageStyle } from './components/background-image/use-app-background-image-style'
 import { SkillFreshnessNudge } from './components/skills/SkillFreshnessNudge'
 import PinnedTabCloseDialog from './components/terminal-pane/PinnedTabCloseDialog'
 import RunningTerminalCloseDialog from './components/terminal-pane/RunningTerminalCloseDialog'
@@ -72,12 +73,15 @@ function App(): React.JSX.Element {
     [cancelReturnFocusFrame, clearUnreadDockBadge]
   )
 
+  const appBackgroundImageStyle = useAppBackgroundImageStyle()
+
   return (
     <div
       ref={setAppRootNode}
-      className="app-layout"
+      className={`app-layout${appBackgroundImageStyle ? ' app-background-image' : ''}`}
       style={
         {
+          ...appBackgroundImageStyle,
           '--collapsed-sidebar-header-width': `${layout.collapsedSidebarHeaderWidth}px`,
           // Shared so surfaces can avoid the Windows/Linux window-controls overlay without hardcoding 138px everywhere.
           '--window-controls-width': WINDOW_CONTROLS_WIDTH,

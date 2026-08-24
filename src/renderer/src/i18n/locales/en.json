@@ -65,6 +65,23 @@
       "menuBarIcon": {
         "title": "Show Menu Bar Icon",
         "description": "Keep an Orca shortcut and activity indicator in the macOS menu bar."
+      },
+      "backgroundImage": {
+        "title": "Background Image",
+        "description": "Use your own image as the app background.",
+        "choose": "Choose Image…",
+        "change": "Change Image…",
+        "remove": "Remove",
+        "opacityLabel": "Image Opacity",
+        "terminalHint": "Terminals are opaque by default, so the image only shows outside them.",
+        "terminalHintLink": "Lower terminal background opacity",
+        "importFailed": "Failed to import image",
+        "search": {
+          "background": "background",
+          "image": "image",
+          "wallpaper": "wallpaper",
+          "opacity": "opacity"
+        }
       }
     }
   },

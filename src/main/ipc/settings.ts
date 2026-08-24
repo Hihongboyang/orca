@@ -16,6 +16,7 @@ import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetr
 import { applyElectronProxySettings } from '../network/proxy-settings'
 import { normalizeProxyBypassRules, normalizeProxyUrl } from '../../shared/network-proxy'
 import { normalizeAppIconId } from '../../shared/app-icon'
+import { normalizeBackgroundImageOpacity } from '../../shared/background-image-settings'
 import { normalizeUiLanguage } from '../../shared/ui-language'
 import { applyAppIcon } from '../app-icon'
 import { normalizeTerminalCustomThemes } from '../../shared/terminal-custom-themes'
@@ -157,6 +158,11 @@ export function registerSettingsHandlers(
     }
     if ('appIcon' in args) {
       sanitizedArgs.appIcon = normalizeAppIconId(args.appIcon)
+    }
+    if ('backgroundImageOpacity' in args) {
+      sanitizedArgs.backgroundImageOpacity = normalizeBackgroundImageOpacity(
+        args.backgroundImageOpacity
+      )
     }
     if ('terminalCustomThemes' in args) {
       sanitizedArgs.terminalCustomThemes = normalizeTerminalCustomThemes(args.terminalCustomThemes)

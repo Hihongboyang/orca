@@ -712,6 +712,60 @@
   overflow: hidden;
 }
 
+/* User-selected app background image. The inline style on .app-layout layers a
+   theme-colored veil gradient over the blob URL (image-opacity emulation); this
+   class fixes the wallpaper fit. Paints above body's bg-background and below all
+   children — opaque surfaces (cards/popovers) cover it by design. The
+   --editor-surface override veils the editor surface in wallpaper mode (raw hex
+   mirrors the light theme block's own value — keep in sync). */
+.app-background-image {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  --editor-surface: color-mix(in srgb, #ffffff 86%, transparent);
+}
+
+/* Dark-theme veil for the editor surface (mirrors the .dark block's #1e1e1e). */
+.dark .app-background-image {
+  --editor-surface: color-mix(in srgb, #1e1e1e 86%, transparent);
+}
+
+/* Monaco paints its own theme background; let the veiled host surface show. */
+.app-background-image .monaco-editor,
+.app-background-image .monaco-editor-background {
+  background-color: transparent;
+}
+
+.app-background-image .editor-surface-host {
+  background-color: var(--editor-surface);
+}
+
+.app-background-image .right-sidebar-surface {
+  background-color: color-mix(in srgb, var(--sidebar) 86%, transparent);
+}
+
+.app-background-image .worktree-sidebar-surface {
+  background-color: color-mix(in srgb, var(--worktree-sidebar) 86%, transparent);
+}
+
+/* Why transparent: the tab strip must behave like the left sidebar's top strip —
+   no plate of its own, so the wallpaper shows through at exactly the image
+   opacity the user set on the slider (no fixed veil). */
+.app-background-image .tab-strip-surface {
+  background-color: transparent;
+}
+
+/* Individual tabs get the same treatment: no plate of their own. The active
+   tab keeps a faint foreground-only wash so selection still reads over the
+   image; the 2px bottom indicator stays as the crisp opaque marker. */
+.app-background-image .tab-plate-inactive {
+  background-color: transparent;
+}
+
+.app-background-image .tab-plate-active {
+  background-color: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
 /* Why: native windows have a stable content box and need no wake-time viewport reflow. */
 html.native-shell,
 html.native-shell body,

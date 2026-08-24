@@ -24,6 +24,7 @@ import {
   getTypographyEntries,
   getZoomEntries
 } from './appearance-search'
+import { BackgroundImageSetting } from './BackgroundImageSetting'
 import {
   getUiLanguageChoiceLabel,
   SHOW_UI_LANGUAGE_SETTING,
@@ -112,6 +113,12 @@ export function AppearanceInterfaceSection({
           }
         />
       </SearchableSetting>
+
+      <BackgroundImageSetting
+        settings={settings}
+        updateSettings={updateSettings}
+        forceVisible={forceVisiblePrimary}
+      />
 
       {SHOW_UI_LANGUAGE_SETTING ? (
         <SearchableSetting

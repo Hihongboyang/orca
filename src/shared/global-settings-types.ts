@@ -1,4 +1,5 @@
 import type { ExecutionHostId } from './execution-host'
+import type { BackgroundImage } from './background-image-settings'
 import type { GitHubProjectSettings } from './github/project-types'
 import type { VoiceSettings } from './speech-types'
 import type { GitLabProjectSettings } from './gitlab-types'
@@ -142,6 +143,10 @@ export type GlobalSettings = {
   terminalDividerThicknessPx: number
   terminalBackgroundOpacity?: number
   terminalColorOverrides?: TerminalColorOverrides
+  /** App background image; absent = solid color. Desktop main window only — web/mobile clients ignore the key (bytes are local to userData/backgrounds/). */
+  backgroundImage?: BackgroundImage
+  /** App background image opacity as a 0–1 float; absent = 1 (fully shown). Clamped on read. */
+  backgroundImageOpacity?: number
   terminalPaddingX?: number
   terminalPaddingY?: number
   terminalMouseHideWhileTyping?: boolean

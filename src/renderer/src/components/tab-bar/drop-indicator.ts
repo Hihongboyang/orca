@@ -29,9 +29,12 @@ export const ACTIVE_TAB_INDICATOR_CLASSES =
   'pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[color-mix(in_srgb,var(--foreground)_60%,var(--card))] z-10'
 
 export function getTabRootStateClasses(isActive: boolean): string {
+  // Why the tab-plate markers: wallpaper mode (see .app-background-image rules
+  // in main.css) retargets the tab plate via these stable classes — the default
+  // utilities stay untouched when no background image is set.
   return isActive
-    ? 'bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))] text-foreground'
-    : 'bg-card text-muted-foreground hover:text-foreground'
+    ? 'tab-plate-active bg-[color-mix(in_srgb,var(--foreground)_6%,var(--card))] text-foreground'
+    : 'tab-plate-inactive bg-card text-muted-foreground hover:text-foreground'
 }
 
 export function getTabStripBorderClasses(
