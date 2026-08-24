@@ -23,6 +23,7 @@ import type { RetiredNameRegistry } from './worktree/retired-name-registry'
 import type { WorkspaceLineage, WorktreeLineage } from './worktree/lineage-types'
 import type { WorktreeMeta } from './worktree/meta-types'
 import type { WorkspaceSessionState } from './workspace-session-state-types'
+import type { SftpHostTrustStore, SftpProfilesByWorkspace } from './sftp-types'
 
 export type LegacyPaneKeyAliasEntry = {
   ptyId: string
@@ -90,6 +91,10 @@ export type PersistedState = {
   /** Per-execution-host session partitions for non-'local' hosts (ssh:/runtime:); 'local' stays in workspaceSession so pre-partition builds keep working. */
   workspaceSessionsByHostId?: Partial<Record<ExecutionHostId, WorkspaceSessionState>>
   sshTargets: SshTarget[]
+  /** SFTP mapping profiles keyed by normalized workspace path (D2); kebab disk keys per contracts.md. */
+  'sftp-profiles'?: SftpProfilesByWorkspace
+  /** TOFU host-key fingerprints keyed by 'host:port' (D5). */
+  'sftp-host-trust'?: SftpHostTrustStore
   /** SSH config aliases the user deleted; suppresses re-import from ~/.ssh/config so a deleted host doesn't reappear. */
   deletedSshConfigAliases: string[]
   /** Identity records for removed SSH targets so a re-added host can re-adopt workspaces orphaned on the old target id. */

@@ -17,7 +17,10 @@ const KNOWN_NON_GITEA_HOSTS = new Set([
   'gitlab.com',
   'bitbucket.org',
   'dev.azure.com',
-  'ssh.dev.azure.com'
+  'ssh.dev.azure.com',
+  // Why: Gitee is a GitHub-style forge, not a Gitea instance — its API is
+  // /api/v5, so a claimed repo can only ever 404.
+  'gitee.com'
 ])
 const repoRefProbeCache = createRemoteRefProbeCache(parseGiteaRepoRef)
 

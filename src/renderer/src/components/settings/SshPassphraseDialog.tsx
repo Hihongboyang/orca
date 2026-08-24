@@ -18,6 +18,7 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
   const targetLabels = useAppStore((s) => s.sshTargetLabels)
   const removeRequest = useAppStore((s) => s.removeSshCredentialRequest)
   const [value, setValue] = useState('')
+  const [remember, setRemember] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const focusFrameRef = useRef<number | null>(null)
@@ -34,6 +35,7 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
     setPrevRequestId(requestId)
     if (requestId) {
       setValue('')
+      setRemember(false)
       setSubmitting(false)
     }
   }
@@ -66,7 +68,11 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
     }
     setSubmitting(true)
     try {
-      await window.api.ssh.submitCredential({ requestId: request.requestId, value })
+      await window.api.ssh.submitCredential({
+        requestId: request.requestId,
+        value,
+        remember
+      })
       removeRequest(request.requestId)
     } catch (err) {
       toast.error(
@@ -79,13 +85,17 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
       )
       setSubmitting(false)
     }
-  }, [request, value, removeRequest])
+  }, [request, value, remember, removeRequest])
 
   const handleCancel = useCallback(async () => {
     if (request) {
       setSubmitting(true)
       try {
-        await window.api.ssh.submitCredential({ requestId: request.requestId, value: null })
+        await window.api.ssh.submitCredential({
+          requestId: request.requestId,
+          value: null,
+          remember: false
+        })
         removeRequest(request.requestId)
       } catch (err) {
         toast.error(
@@ -190,6 +200,23 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
             className="h-8 text-sm"
             disabled={submitting}
           />
+          <label
+            htmlFor="ssh-credential-remember"
+            className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+          >
+            <input
+              id="ssh-credential-remember"
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              disabled={submitting}
+              className="size-3 accent-primary"
+            />
+            {translate(
+              'auto.components.settings.SshPassphraseDialog.5366e8d2f7',
+              'Remember on this device'
+            )}
+          </label>
         </div>
         <DialogFooter className="mt-1">
           <Button

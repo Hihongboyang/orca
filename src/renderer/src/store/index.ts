@@ -26,6 +26,7 @@ import { createBrowserSlice } from './slices/browser'
 import { createRateLimitSlice } from './slices/rate-limits'
 import { createSshSlice } from './slices/ssh'
 import { createRuntimeEnvironmentSshSlice } from './slices/runtime-environment-ssh'
+import { createSftpSlice } from './slices/sftp'
 import { createAgentStatusSlice } from './slices/agent-status'
 import { createPaneForegroundAgentSlice } from './slices/pane-foreground-agent'
 import { createDiffCommentsSlice } from './slices/diffComments'
@@ -86,6 +87,7 @@ export const useAppStore = create<AppState>()((...a) => {
     ...createRateLimitSlice(...a),
     ...createSshSlice(...a),
     ...createRuntimeEnvironmentSshSlice(...a),
+    ...createSftpSlice(...a),
     ...createAgentStatusSlice(...a),
     ...createPaneForegroundAgentSlice(...a),
     ...createDiffCommentsSlice(...a),

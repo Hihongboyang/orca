@@ -6,6 +6,7 @@ import type { GitFileStatus } from '../../../../shared/git-status-types'
 import { FileExplorerRow } from './FileExplorerRow'
 import { InlineInputRow, type InlineInput } from './file-explorer-inline-input-row'
 import { shouldShowIgnoredDecoration, STATUS_COLORS } from './status-display'
+import type { SftpRowMenu } from './FileExplorerSftpMenu'
 import type { DirCache, TreeNode } from './file-explorer-types'
 import type { FileExplorerRowProjection } from './file-explorer-row-projection'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
@@ -54,6 +55,7 @@ type FileExplorerVirtualRowsProps = {
   dropTargetDir: string | null
   dragSourcePath: string | null
   nativeDropTargetDir: string | null
+  sftpRowMenu?: SftpRowMenu | null
 }
 
 export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): React.JSX.Element {
@@ -100,7 +102,8 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
     onNativeDragExpandDir,
     dropTargetDir,
     dragSourcePath,
-    nativeDropTargetDir
+    nativeDropTargetDir,
+    sftpRowMenu = null
   } = props
 
   const visibleSelectionCount = rowProjection.countVisiblePaths(selectedPaths)
@@ -207,6 +210,7 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
               onDragExpandDir={onDragExpandDir}
               onNativeDragTargetChange={onNativeDragTargetChange}
               onNativeDragExpandDir={onNativeDragExpandDir}
+              sftpRowMenu={sftpRowMenu}
             />
           </div>
         )

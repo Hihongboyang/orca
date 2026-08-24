@@ -736,3 +736,81 @@ describe('SshConnectionStore', () => {
     })
   })
 })
+
+describe('SshConnectionStore remembered credentials', () => {
+  let mockStore: ReturnType<typeof createMockStore>
+  let sshStore: SshConnectionStore
+
+  beforeEach(() => {
+    mockStore = createMockStore()
+    sshStore = new SshConnectionStore(mockStore as never)
+  })
+
+  it('stores a remembered credential on the target', () => {
+    mockStore.addSshTarget({
+      id: 't1',
+      label: 'prod',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy'
+    })
+
+    sshStore.rememberCredential('t1', 'password', 'hunter2')
+    expect(mockStore.updateSshTarget).toHaveBeenCalledWith('t1', { rememberedPassword: 'hunter2' })
+
+    sshStore.rememberCredential('t1', 'passphrase', 'phrase')
+    expect(mockStore.updateSshTarget).toHaveBeenCalledWith('t1', { rememberedPassphrase: 'phrase' })
+  })
+
+  it('exposes remembered credentials for consumption by new connections', () => {
+    mockStore.addSshTarget({
+      id: 't1',
+      label: 'prod',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy',
+      rememberedPassword: 'hunter2',
+      rememberedPassphrase: 'phrase'
+    })
+
+    expect(sshStore.getRememberedCredential('t1', 'password')).toBe('hunter2')
+    expect(sshStore.getRememberedCredential('t1', 'passphrase')).toBe('phrase')
+    expect(sshStore.getRememberedCredential('missing', 'password')).toBeUndefined()
+  })
+
+  it('clearing a remembered credential removes it so connections prompt again', () => {
+    mockStore.addSshTarget({
+      id: 't1',
+      label: 'prod',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy',
+      rememberedPassword: 'hunter2'
+    })
+
+    sshStore.clearRememberedCredential('t1', 'password')
+    expect(mockStore.updateSshTarget).toHaveBeenCalledWith('t1', { rememberedPassword: undefined })
+    // Why: the mock Object.assign keeps undefined; the store's target no longer
+    // carries a usable credential either way.
+    expect(sshStore.getRememberedCredential('t1', 'password')).toBeUndefined()
+  })
+
+  it('ignores empty remembered values', () => {
+    mockStore.addSshTarget({
+      id: 't1',
+      label: 'prod',
+      host: '10.0.0.5',
+      port: 22,
+      username: 'deploy'
+    })
+
+    sshStore.rememberCredential('t1', 'password', '')
+    expect(mockStore.updateSshTarget).not.toHaveBeenCalled()
+  })
+
+  it('removing a target is a no-op for credential lookups', () => {
+    expect(sshStore.getRememberedCredential('gone', 'password')).toBeUndefined()
+    expect(() => sshStore.clearRememberedCredential('gone', 'password')).not.toThrow()
+    expect(mockStore.updateSshTarget).not.toHaveBeenCalled()
+  })
+})

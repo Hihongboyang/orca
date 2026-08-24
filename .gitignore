@@ -97,6 +97,7 @@ docs/**
 !docs/agent-skill-sharing-implementation-checklist.md
 !docs/agent-skill-sharing-installation-plan.md
 !docs/ai-vault-process-isolation-plan.md
+!docs/GLOSSARY.md
 !docs/mobile-terminal-shortcut-bar.md
 !docs/reference/
 !docs/reference/git-compatibility.md

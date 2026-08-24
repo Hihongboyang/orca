@@ -50,6 +50,11 @@ const SshPassphraseDialog = lazy(() =>
     default: module.SshPassphraseDialog
   }))
 )
+const SftpTransferSurface = lazy(() =>
+  import('../components/sftp/SftpTransferSurface').then((module) => ({
+    default: module.SftpTransferSurface
+  }))
+)
 const UpdateCard = lazy(() =>
   import('../components/UpdateCard').then((module) => ({ default: module.UpdateCard }))
 )
@@ -309,6 +314,11 @@ export function AppRootSurfaces(props: {
           </ModalBoundary>
         </Suspense>
       ) : null}
+      <Suspense fallback={null}>
+        <RecoverableRenderErrorBoundary boundaryId="sftp.transfer-surface" surface="modal" compact>
+          <SftpTransferSurface />
+        </RecoverableRenderErrorBoundary>
+      </Suspense>
       <ModalBoundary boundaryId="modal.markdown-template-picker" resetKey={activeModal}>
         <MarkdownTemplatePicker />
       </ModalBoundary>

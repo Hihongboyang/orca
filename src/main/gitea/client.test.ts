@@ -267,6 +267,17 @@ describe('Gitea client', () => {
     )
   })
 
+  it('collapses a 404 to null even in strict mode — a missing repo/PR is not a lookup failure', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ message: 'not found' }, { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // Repo-level 404 on the /pulls scan.
+    await expect(getGiteaPullRequestForBranchOrThrow('/repo', 'feature/gitea')).resolves.toBeNull()
+    // PR-level 404 on the linked-number fallback.
+    await expect(getGiteaPullRequestForBranchOrThrow('/repo', '', 42)).resolves.toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('expires successful scans and bounds retained repository listings', async () => {
     vi.useFakeTimers()
     try {

@@ -105,7 +105,6 @@ const mockApi = {
 globalThis.window = { api: mockApi }
 
 import { createTestStore } from './store-test-helpers'
-
 const REPO = 'repo1'
 const WT = 'repo1::/path/wt'
 

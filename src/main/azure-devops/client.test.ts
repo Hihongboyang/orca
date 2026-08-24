@@ -203,6 +203,30 @@ describe('Azure DevOps client', () => {
     ).rejects.toThrow(/Azure DevOps request failed/)
   })
 
+  it('collapses a 404 to null even in strict mode — a missing repo/PR is not a lookup failure', async () => {
+    gitExecFileAsyncMock.mockResolvedValue({
+      stdout: 'https://dev.azure.com/acme/Project/_git/repo\n'
+    })
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/acme/Project/_apis/git/repositories/repo') {
+        return new Response(
+          JSON.stringify({
+            id: 'repo-guid',
+            webUrl: 'https://dev.azure.com/acme/Project/_git/repo'
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      // The pull-request list lookup misses.
+      return new Response(JSON.stringify({ message: 'not found' }), { status: 404 })
+    }) as never
+
+    await expect(
+      getAzureDevOpsPullRequestForBranchOrThrow('/repo', 'refs/heads/feature/azure')
+    ).resolves.toBeNull()
+  })
+
   it('uses the most recent branch PR instead of preferring stale active PRs', async () => {
     gitExecFileAsyncMock.mockResolvedValue({
       stdout: 'https://dev.azure.com/acme/Project/_git/repo\n'

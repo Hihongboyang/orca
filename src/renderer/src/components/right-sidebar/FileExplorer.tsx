@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useAppStore } from '@/store'
 import { useActiveWorktree, useRepoById } from '@/store/selectors'
 import { basename } from '@/lib/path'
@@ -7,6 +7,8 @@ import { isGitRepoKind } from '../../../../shared/repo-kind'
 import { getVisibleFileExplorerWorktreePath } from './file-explorer-reset'
 import { FileExplorerBackgroundMenu } from './FileExplorerBackgroundMenu'
 import { FileExplorerFilesTreePane } from './FileExplorerFilesTreePane'
+import { useSftpExplorerMenu } from './use-sftp-explorer-menu'
+import { SftpCompareDialog } from '../editor/SftpCompareDialog'
 import { FileExplorerNameFilter } from './FileExplorerNameFilter'
 import { FileExplorerQueryStrip } from './FileExplorerQueryStrip'
 import { FileExplorerToolbar } from './FileExplorerToolbar'
@@ -47,6 +49,18 @@ function FileExplorerFiles(): React.JSX.Element {
   const toggleShowDotfilesForWorktree = useAppStore((s) => s.toggleShowDotfilesForWorktree)
 
   const worktreePath = activeWorktree?.path ?? null
+  const [sftpCompare, setSftpCompare] = useState<{
+    localPath: string
+    remoteContent: string
+    profileLabel: string
+  } | null>(null)
+  const sftpRowMenu = useSftpExplorerMenu({
+    workspacePath: worktreePath,
+    // Why: SSH remote workspaces hide the SFTP submenus entirely (D10).
+    isSshWorkspace: Boolean(activeRepo?.connectionId),
+    onCompare: (content, localPath, profileLabel) =>
+      setSftpCompare({ localPath, remoteContent: content, profileLabel })
+  })
   const isFilesViewActive = explorerView === 'files'
   const visibleFilesWorktreePath = getVisibleFileExplorerWorktreePath({
     explorerView,
@@ -277,6 +291,7 @@ function FileExplorerFiles(): React.JSX.Element {
             visibleRowCount={visibleRowCount}
             handleExplorerBackgroundContextMenuCapture={handleExplorerBackgroundContextMenuCapture}
             handleExplorerBackgroundDoubleClick={handleExplorerBackgroundDoubleClick}
+            sftpRowMenu={sftpRowMenu}
           />
           <div
             className={cn(
@@ -298,6 +313,15 @@ function FileExplorerFiles(): React.JSX.Element {
         </div>
       </div>
 
+      {sftpCompare ? (
+        <SftpCompareDialog
+          open
+          localPath={sftpCompare.localPath}
+          remoteContent={sftpCompare.remoteContent}
+          profileLabel={sftpCompare.profileLabel}
+          onClose={() => setSftpCompare(null)}
+        />
+      ) : null}
       <FileExplorerBackgroundMenu
         open={bgMenuOpen}
         onOpenChange={setBgMenuOpen}

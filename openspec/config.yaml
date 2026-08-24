@@ -1,0 +1,30 @@
+schema: spec-driven-contracts
+
+context: |
+  Electron + TypeScript app (main process / renderer / shared).
+  Agent context: AGENTS.md. UI tokens and components: docs/STYLEGUIDE.md.
+  Glossary: docs/GLOSSARY.md — use its terms exactly; one term per concept.
+  Cross-cutting constraints: SSH use case, folder workspaces, cross-platform (macOS/Linux/Windows),
+  remote wire compatibility (docs/reference/remote-wire-compatibility.md),
+  git binary compatibility (docs/reference/git-compatibility.md).
+  Contracts live in code, not prose: shared types in src/shared/*.ts.
+
+rules:
+  proposal:
+    - Always include a "Non-Goals" section
+    - Name the existing modules and flows this change reuses
+  design:
+    - Include a "Module Map" section listing every new or modified file and what lives in it
+    - Reference checked-in type contract files instead of re-describing field shapes in prose
+    - Every decision records its rejected alternatives and why
+  specs:
+    - Write each WHEN/THEN scenario so it maps 1:1 onto a test case
+    - Reference exact type and file names instead of paraphrasing them
+  contracts:
+    - Declare shapes as TypeScript blocks, never prose descriptions
+    - Name every IPC channel and persisted key exactly once; code implements these names verbatim
+    - Follow the domain:action kebab-case channel convention (e.g. sftp:upload)
+    - Changing a declared shape requires a decision record in design.md
+  tasks:
+    - Every task ends with its verification step (test file to pass, typecheck, or lint), never a bare "implement X"
+    - Order test-first: each implementation task is immediately preceded by its failing-test task (verified RED), and completes only when that test turns GREEN

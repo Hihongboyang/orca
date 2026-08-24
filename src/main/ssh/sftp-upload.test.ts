@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +7,7 @@ import { Writable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import type { SFTPWrapper } from 'ssh2'
 import { removeDirectorySftp, uploadBuffer, uploadDirectory, uploadFile } from './sftp-upload'
+import { uploadLocalTo } from './sftp-upload-batch'
 
 function createWritable(): Writable {
   return new Writable({
@@ -59,7 +61,7 @@ describe('sftp-upload', () => {
     })
     const writeStream = vi.mocked(sftp.createWriteStream).mock.results[0]?.value as Writable
     expect(writeStream.listenerCount('close')).toBe(0)
-    expect(writeStream.listenerCount('error')).toBe(0)
+    expect(writeStream.listenerCount('error')).toBe(1)
   })
 
   it('uploads files from valid dot-dot-prefixed local directories', async () => {
@@ -201,5 +203,113 @@ describe('sftp-upload', () => {
     expect(sftp.rmdir).toHaveBeenNthCalledWith(1, '/remote/assets/nested', expect.any(Function))
     expect(sftp.unlink).toHaveBeenNthCalledWith(2, '/remote/assets/logo.png', expect.any(Function))
     expect(sftp.rmdir).toHaveBeenNthCalledWith(2, '/remote/assets', expect.any(Function))
+  })
+})
+
+describe('uploadLocalTo (batch semantics)', () => {
+  const remoteUploads: Record<string, Buffer> = {}
+  function createWritableFor(paths: Record<string, 'ok' | 'error'>): {
+    sftp: SFTPWrapper
+    written: string[]
+  } {
+    const written: string[] = []
+    const sftp = {
+      mkdir: (_path: string, cb: (err?: Error | null) => void) => cb(null),
+      fastPut: (
+        localPath: string,
+        remotePath: string,
+        _opts: unknown,
+        cb: (err: Error | null) => void
+      ) => {
+        if (paths[remotePath] === 'error') {
+          cb(new Error('remote disk full'))
+          return
+        }
+        written.push(remotePath)
+        try {
+          const chunk = readFileSync(localPath)
+          remoteUploads[remotePath] = Buffer.concat([
+            remoteUploads[remotePath] ?? Buffer.alloc(0),
+            chunk
+          ])
+          cb(null)
+        } catch (err) {
+          cb(err instanceof Error ? err : new Error(String(err)))
+        }
+      },
+      createWriteStream: (path: string) => {
+        written.push(path)
+        const mode = paths[path] ?? 'ok'
+        if (mode === 'error') {
+          return new Writable({
+            write(_chunk: unknown, _enc: string, cb: (err?: Error | null) => void) {
+              cb(new Error('remote disk full'))
+            }
+          })
+        }
+        return new Writable({
+          write(_chunk: unknown, _enc: string, cb: (err?: Error | null) => void) {
+            cb(null)
+          }
+        })
+      }
+    }
+    return { sftp: sftp as unknown as SFTPWrapper, written }
+  }
+
+  it('continues after a per-file failure and collects outcomes', async () => {
+    const localDir = await mkdtemp(join(tmpdir(), 'orca-sftp-batch-'))
+    await writeFile(join(localDir, 'good1.txt'), 'a')
+    await writeFile(join(localDir, 'bad.txt'), 'b')
+    await writeFile(join(localDir, 'good2.txt'), 'c')
+
+    const { sftp } = createWritableFor({
+      '/remote/bad.txt': 'error'
+    })
+    const outcomes = await uploadLocalTo(sftp, localDir, '/remote', {
+      rootRealPath: await realpath(localDir)
+    })
+
+    expect(outcomes).toHaveLength(3)
+    const failed = outcomes.find((o) => !o.ok)
+    expect(failed?.path.endsWith('bad.txt')).toBe(true)
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(2)
+  })
+
+  it('cancel mid-transfer stops and keeps completed outcomes', async () => {
+    const localDir = await mkdtemp(join(tmpdir(), 'orca-sftp-cancel-'))
+    await writeFile(join(localDir, 'first.txt'), 'a')
+    await writeFile(join(localDir, 'second.txt'), 'b')
+
+    const controller = new AbortController()
+    const { sftp, written } = createWritableFor({})
+    const outcomes = await uploadLocalTo(sftp, localDir, '/remote', {
+      rootRealPath: await realpath(localDir),
+      signal: controller.signal,
+      onProgress: (done: number) => {
+        if (done >= 1) {
+          controller.abort()
+        }
+      }
+    })
+
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(1)
+    expect(controller.signal.aborted).toBe(true)
+    expect(written).toEqual(['/remote/first.txt'])
+  })
+
+  it('skips entries via shouldSkip', async () => {
+    const localDir = await mkdtemp(join(tmpdir(), 'orca-sftp-skip-'))
+    await writeFile(join(localDir, 'keep.txt'), 'a')
+    await writeFile(join(localDir, 'skip-me.txt'), 'b')
+
+    const { sftp } = createWritableFor({})
+    const outcomes = await uploadLocalTo(sftp, localDir, '/remote', {
+      rootRealPath: await realpath(localDir),
+      shouldSkip: (p: string) => p.endsWith('skip-me.txt')
+    })
+
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0]?.path.endsWith('keep.txt')).toBe(true)
   })
 })

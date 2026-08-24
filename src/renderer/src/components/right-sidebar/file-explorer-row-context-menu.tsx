@@ -38,6 +38,7 @@ import {
   shouldShowViewFileAction
 } from './file-explorer-row-action-visibility'
 import { copyFileToOsClipboard, downloadRemoteFile } from './file-explorer-row-file-transfer'
+import { FileExplorerSftpMenu } from './FileExplorerSftpMenu'
 
 const isMac = navigator.userAgent.includes('Mac')
 const isLinux = navigator.userAgent.includes('Linux')
@@ -83,6 +84,7 @@ type FileExplorerRowContextMenuProps = Pick<
   | 'onRequestDelete'
   | 'onCollapseFolderSubtree'
   | 'onFindInFolder'
+  | 'sftpRowMenu'
 >
 
 export function FileExplorerRowContextMenu({
@@ -107,7 +109,8 @@ export function FileExplorerRowContextMenu({
   onOpenInTerminal,
   onRequestDelete,
   onCollapseFolderSubtree,
-  onFindInFolder
+  onFindInFolder,
+  sftpRowMenu = null
 }: FileExplorerRowContextMenuProps): React.JSX.Element {
   const openMarkdownPreview = useAppStore((s) => s.openMarkdownPreview)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -186,6 +189,9 @@ export function FileExplorerRowContextMenu({
           <ContextMenuShortcut>{copyRelativePathShortcutLabel}</ContextMenuShortcut>
         ) : null}
       </ContextMenuItem>
+      {sftpRowMenu ? (
+        <FileExplorerSftpMenu isDirectory={node.isDirectory} menu={sftpRowMenu} />
+      ) : null}
       {!node.isDirectory && (
         <ContextMenuItem onSelect={() => onDuplicate(node)}>
           <Files />

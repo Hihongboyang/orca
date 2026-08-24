@@ -49,7 +49,6 @@ describe('SSH IPC handlers', () => {
   } = harness
 
   beforeEach(harness.reset)
-
   it('ssh:connect throws for unknown targetId', async () => {
     mockSshStore.getTarget.mockReturnValue(undefined)
 

@@ -8,6 +8,7 @@ import type { Repo } from '../../../../shared/repo-types'
 import type { RightSidebarExplorerView } from '../../../../shared/ui-chrome-types'
 import { FileExplorerTreeStatus } from './FileExplorerTreeStatus'
 import { FileExplorerVirtualRows } from './FileExplorerVirtualRows'
+import type { SftpRowMenu } from './FileExplorerSftpMenu'
 import { canShowAddAsProjectAction } from './file-explorer-add-project-action'
 import type { FileExplorerNameFilterProjectionSource } from './file-explorer-name-filter-projection'
 import type { FileExplorerRowProjection } from './file-explorer-row-projection'
@@ -35,6 +36,8 @@ type FileExplorerFilesTreePaneProps = {
   visibleRowCount: number
   handleExplorerBackgroundContextMenuCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   handleExplorerBackgroundDoubleClick: (event: React.MouseEvent<HTMLDivElement>) => void
+  /** Null on SSH remote workspaces — SFTP submenus absent entirely (D10). */
+  sftpRowMenu?: SftpRowMenu | null
 }
 
 /** Presentational tree pane: every effect it renders from lives in useFileExplorerTreePaneState. */
@@ -57,7 +60,8 @@ export function FileExplorerFilesTreePane({
   rowExpandedPaths,
   visibleRowCount,
   handleExplorerBackgroundContextMenuCapture,
-  handleExplorerBackgroundDoubleClick
+  handleExplorerBackgroundDoubleClick,
+  sftpRowMenu = null
 }: FileExplorerFilesTreePaneProps): React.JSX.Element {
   const { dirCache, rootCache, rootError } = tree
   const { selectedPaths, preserveSelectionForContextMenu, copyPathsForNode } = selection
@@ -184,6 +188,7 @@ export function FileExplorerFilesTreePane({
           deleteShortcutLabel={deletion.deleteShortcutLabel}
           connectionId={activeRepo?.connectionId ?? null}
           runtimeDownloadContext={runtimeDownloadContext}
+          sftpRowMenu={sftpRowMenu}
           supportsFolderDownload={supportsFolderDownload}
           canOpenInOrcaBrowser={canOpenWorkspaceFileBrowserForPath}
           onClick={handleRowClick}

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import {
   CircleStop,
+  KeyRound,
   Loader2,
   MonitorSmartphone,
   Pencil,
@@ -91,6 +92,7 @@ type SshTargetCardProps = {
   onTest: (targetId: string) => void | Promise<void>
   onEdit: (target: SshTarget) => void
   onRemove: (targetId: string) => void
+  onClearRememberedCredential: (targetId: string) => void | Promise<void>
 }
 
 export function SshTargetCard({
@@ -104,7 +106,8 @@ export function SshTargetCard({
   onResetRelay,
   onTest,
   onEdit,
-  onRemove
+  onRemove,
+  onClearRememberedCredential
 }: SshTargetCardProps): React.JSX.Element {
   const status: SshConnectionStatus = state?.status ?? 'disconnected'
   const [actionInFlight, setActionInFlight] = useState<
@@ -229,10 +232,37 @@ export function SshTargetCard({
     </Tooltip>
   )
 
+  const renderClearCredentialButton = (): React.JSX.Element | null =>
+    target.hasRememberedCredential === true ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => void onClearRememberedCredential(target.id)}
+            className="size-7 text-muted-foreground hover:text-foreground"
+            aria-label={translate(
+              'auto.components.settings.SshTargetCard.0efa50c164',
+              'Clear remembered credential'
+            )}
+          >
+            <KeyRound className="size-3" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={4}>
+          {translate(
+            'auto.components.settings.SshTargetCard.0efa50c164',
+            'Clear remembered credential'
+          )}
+        </TooltipContent>
+      </Tooltip>
+    ) : null
+
   const renderSecondaryIconActions = (includeEndRemoteTerminals: boolean): React.JSX.Element => (
     <div className="flex items-center gap-1">
       {includeEndRemoteTerminals ? renderEndRemoteTerminalsButton() : null}
       {isSshTargetConnecting(status) ? null : renderResetRelayButton()}
+      {renderClearCredentialButton()}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

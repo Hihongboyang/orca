@@ -2,7 +2,8 @@
 
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { i18n } from '../../i18n/i18n'
 import { SshTargetCard } from './SshTargetCard'
 import { TooltipProvider } from '../ui/tooltip'
 import type { SshConnectionState, SshTarget } from '../../../../shared/ssh-types'
@@ -23,16 +24,20 @@ const target: SshTarget = {
 const HOST_KEY_ERROR =
   'Host key verification failed for build-01.internal. The key does not match the entry in your known_hosts file. ssh and git will refuse this host too. Run: ssh-keygen -R build-01.internal'
 
-async function renderCard(state: SshConnectionState | undefined): Promise<HTMLElement> {
+async function renderCard(
+  state: SshConnectionState | undefined,
+  overrides: { target?: SshTarget; onClearRememberedCredential?: (targetId: string) => void } = {}
+): Promise<HTMLElement> {
   const container = document.createElement('div')
   document.body.appendChild(container)
   await act(async () => {
     createRoot(container).render(
       <TooltipProvider>
         <SshTargetCard
-          target={target}
+          target={overrides.target ?? target}
           state={state}
           testing={false}
+          onClearRememberedCredential={overrides.onClearRememberedCredential ?? vi.fn()}
           onConnect={vi.fn()}
           onDisconnect={vi.fn()}
           onTerminateSessions={vi.fn()}
@@ -80,5 +85,33 @@ describe('the connection error on an SSH target card', () => {
     const container = await renderCard(undefined)
 
     expect(container.textContent).not.toContain('Host key verification failed')
+  })
+})
+
+describe('SshTargetCard clear remembered credential', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  it('hides the clear-credential action when nothing is remembered', async () => {
+    const card = await renderCard(undefined)
+    expect(card.querySelector('button[aria-label="Clear remembered credential"]')).toBeNull()
+  })
+
+  it('shows the action and fires onClearRememberedCredential on click', async () => {
+    const onClearRememberedCredential = vi.fn()
+    const card = await renderCard(undefined, {
+      target: { ...target, hasRememberedCredential: true },
+      onClearRememberedCredential
+    })
+    const button = card.querySelector<HTMLButtonElement>(
+      'button[aria-label="Clear remembered credential"]'
+    )
+    expect(button).not.toBeNull()
+    expect(button).not.toBeNull()
+    act(() => {
+      button!.click()
+    })
+    expect(onClearRememberedCredential).toHaveBeenCalledWith('target-1')
   })
 })

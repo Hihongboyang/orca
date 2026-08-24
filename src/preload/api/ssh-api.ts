@@ -74,5 +74,10 @@ export type SshApi = {
     }) => void
   ) => () => void
   onCredentialResolved: (callback: (data: { requestId: string }) => void) => () => void
-  submitCredential: (args: { requestId: string; value: string | null }) => Promise<void>
+  submitCredential: (args: {
+    requestId: string
+    value: string | null
+    remember?: boolean
+  }) => Promise<void>
+  clearRememberedCredential: (args: { targetId: string }) => Promise<void>
 }

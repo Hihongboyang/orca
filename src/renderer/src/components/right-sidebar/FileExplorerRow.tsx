@@ -18,6 +18,7 @@ import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/components/tab-bar/SortableTab'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import { createMultiSelectDragGhost } from './file-explorer-multi-drag-image'
 import { FileExplorerRowContextMenu } from './file-explorer-row-context-menu'
+import type { SftpRowMenu } from './FileExplorerSftpMenu'
 
 // ─── File / Folder Row with Context Menu ─────────────────────────
 
@@ -60,6 +61,8 @@ export type FileExplorerRowProps = {
   onDragExpandDir: (dirPath: string) => void
   onNativeDragTargetChange: (dir: string | null) => void
   onNativeDragExpandDir: (dirPath: string) => void
+  /** Null on SSH remote workspaces — the SFTP submenus are absent entirely (D10). */
+  sftpRowMenu?: SftpRowMenu | null
 }
 
 export function FileExplorerRow({
@@ -100,7 +103,8 @@ export function FileExplorerRow({
   onDragSourceChange,
   onDragExpandDir,
   onNativeDragTargetChange,
-  onNativeDragExpandDir
+  onNativeDragExpandDir,
+  sftpRowMenu = null
 }: FileExplorerRowProps): React.JSX.Element {
   const FileIcon = getFileTypeIcon(node.relativePath || node.name)
   const rowDropDir = node.isDirectory ? node.path : targetDir
@@ -124,6 +128,7 @@ export function FileExplorerRow({
           return
         }
         window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
+        sftpRowMenu?.setMenuLocalPath(node.path)
         onContextMenuSelect()
       }}
     >
@@ -270,6 +275,7 @@ export function FileExplorerRow({
         onRequestDelete={onRequestDelete}
         onCollapseFolderSubtree={onCollapseFolderSubtree}
         onFindInFolder={onFindInFolder}
+        sftpRowMenu={sftpRowMenu}
       />
     </ContextMenu>
   )

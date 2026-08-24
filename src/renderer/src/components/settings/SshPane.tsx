@@ -8,6 +8,9 @@ import { Button } from '../ui/button'
 import { removeSshTargetWithBestEffortCleanup } from './ssh-target-remove'
 import { terminateSshSessionsWithReconnect } from './ssh-session-termination'
 import { SshTargetCard } from './SshTargetCard'
+import { SshPaneSftpSection } from './SshPaneSftpSection'
+import { clearRememberedCredentialForTarget } from './clear-remembered-credential-action'
+import { importSshConfigAndReport, reportSshImportFailure } from './ssh-import-action'
 import { SshTargetDestructiveActions } from './SshTargetDestructiveActions'
 import { SshTargetForm, EMPTY_FORM, type EditingTarget } from './SshTargetForm'
 import { getEditingTargetForSshTarget } from './ssh-target-draft'
@@ -295,33 +298,14 @@ export function SshPane({ addTargetIntentSignal }: SshPaneProps): React.JSX.Elem
 
   const handleImport = async (): Promise<void> => {
     try {
-      // Why: the explicit Import action re-adopts every ~/.ssh/config host,
-      // including ones the user previously deleted — clear tombstones so a
-      // deliberate re-import can bring them back.
-      const result = await window.api.ssh.importConfig({ reAdopt: true })
-      useAppStore.getState().recordSshRepoReadoptions(result.repoReadoptions)
+      await importSshConfigAndReport()
       recordFeatureInteraction('ssh')
       if (mountedRef.current) {
-        if (result.targets.length === 0) {
-          toast('~/.ssh/config already in sync')
-        } else {
-          toast.success(
-            translate(
-              'auto.components.settings.SshPane.f8050f6307',
-              'Synced {{value0}} server{{value1}}',
-              { value0: result.targets.length, value1: result.targets.length > 1 ? 's' : '' }
-            )
-          )
-        }
+        await loadTargets()
       }
-      await loadTargets()
     } catch (err) {
       if (mountedRef.current) {
-        toast.error(
-          err instanceof Error
-            ? err.message
-            : translate('auto.components.settings.SshPane.f495689b82', 'Import failed')
-        )
+        reportSshImportFailure(err)
       }
     }
   }
@@ -400,6 +384,13 @@ export function SshPane({ addTargetIntentSignal }: SshPaneProps): React.JSX.Elem
                     onRemove={(id) =>
                       requestRemoveTarget({ id, label: target.label }, requestRemove)
                     }
+                    onClearRememberedCredential={(id) => {
+                      void clearRememberedCredentialForTarget(id).then(() => {
+                        if (mountedRef.current) {
+                          void loadTargets()
+                        }
+                      })
+                    }}
                   />
                 ))}
               </div>
@@ -409,6 +400,7 @@ export function SshPane({ addTargetIntentSignal }: SshPaneProps): React.JSX.Elem
       </SshTargetDestructiveActions>
 
       {/* Why: modal keeps the form in viewport over long host lists (STA-3067). */}
+      <SshPaneSftpSection targets={targets} />
       <SshTargetForm
         open={showForm}
         editingId={editingId}

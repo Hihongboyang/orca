@@ -104,6 +104,11 @@ describe('Gitea repository ref parsing', () => {
     expect(parseGiteaRepoRef('https://team.visualstudio.com/project/_git/repo')).toBeNull()
   })
 
+  it('does not claim gitee.com, which is not a Gitea instance', () => {
+    expect(parseGiteaRepoRef('https://gitee.com/penti/orca.git')).toBeNull()
+    expect(parseGiteaRepoRef('git@gitee.com:penti/orca.git')).toBeNull()
+  })
+
   it('reads and caches the origin remote', async () => {
     gitExecFileAsyncMock.mockResolvedValueOnce({
       stdout: 'https://git.example.com/team/project.git\n',

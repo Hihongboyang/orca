@@ -53,6 +53,15 @@ export type SshTarget = {
   /** Reuse a system OpenSSH connection across setup commands. Undefined means
    *  enabled; false is an explicit per-target compatibility opt-out. */
   systemSshConnectionReuse?: boolean
+  /** Opt-in remembered password (safeStorage-encrypted on disk, plaintext in
+   *  memory). Never included in renderer-facing payloads. */
+  rememberedPassword?: string
+  /** Opt-in remembered private-key passphrase, same storage rules as
+   *  rememberedPassword. */
+  rememberedPassphrase?: string
+  /** Renderer-only derived flag set at the IPC boundary; never persisted. Lets
+   *  target management show the clear affordance without seeing the secret. */
+  hasRememberedCredential?: boolean
 }
 
 /** Public target identity safe to mirror to a paired client. */

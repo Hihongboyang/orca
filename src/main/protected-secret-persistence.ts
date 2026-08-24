@@ -10,6 +10,14 @@ export function sshPtyOwnerLeaseSecretSlot(targetId: string): string {
   return `sshPtyConsumerRecoveries.ownerLease:${targetId}`
 }
 
+export function sshRememberedPasswordSecretSlot(targetId: string): string {
+  return `sshTargets.rememberedPassword:${targetId}`
+}
+
+export function sshRememberedPassphraseSecretSlot(targetId: string): string {
+  return `sshTargets.rememberedPassphrase:${targetId}`
+}
+
 export type ProtectedSecretDecryption = {
   plaintext: string
   status: 'decrypted' | 'failed' | 'unavailable'

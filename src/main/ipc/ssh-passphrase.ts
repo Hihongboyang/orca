@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto'
 import type { SshCredentialKind } from '../ssh/ssh-connection-utils'
 
 const CREDENTIAL_TIMEOUT_MS = 120_000
-const pendingRequests = new Map<string, { resolve: (value: string | null) => void }>()
+const pendingRequests = new Map<string, { resolve: (result: SshCredentialAnswer) => void }>()
+
+export type SshCredentialAnswer = { value: string | null; remember: boolean }
 
 function notifyCredentialResolved(
   getMainWindow: () => BrowserWindow | null,
@@ -20,20 +22,20 @@ export function requestCredential(
   targetId: string,
   kind: SshCredentialKind,
   detail: string
-): Promise<string | null> {
+): Promise<SshCredentialAnswer> {
   const requestId = randomUUID()
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       if (pendingRequests.delete(requestId)) {
         notifyCredentialResolved(getMainWindow, requestId)
-        resolve(null)
+        resolve({ value: null, remember: false })
       }
     }, CREDENTIAL_TIMEOUT_MS)
 
     pendingRequests.set(requestId, {
-      resolve: (value) => {
+      resolve: (result) => {
         clearTimeout(timer)
-        resolve(value)
+        resolve(result)
       }
     })
 
@@ -44,7 +46,7 @@ export function requestCredential(
       pendingRequests.delete(requestId)
       clearTimeout(timer)
       notifyCredentialResolved(getMainWindow, requestId)
-      resolve(null)
+      resolve({ value: null, remember: false })
     }
   })
 }
@@ -53,12 +55,12 @@ export function registerCredentialHandler(getMainWindow: () => BrowserWindow | n
   ipcMain.removeHandler('ssh:submitCredential')
   ipcMain.handle(
     'ssh:submitCredential',
-    (_event, args: { requestId: string; value: string | null }) => {
+    (_event, args: { requestId: string; value: string | null; remember?: boolean }) => {
       const pending = pendingRequests.get(args.requestId)
       if (pending) {
         pendingRequests.delete(args.requestId)
         notifyCredentialResolved(getMainWindow, args.requestId)
-        pending.resolve(args.value)
+        pending.resolve({ value: args.value, remember: args.remember === true })
       }
     }
   )

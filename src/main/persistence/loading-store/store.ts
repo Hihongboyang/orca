@@ -30,6 +30,7 @@ import type {
 import { normalizeProxyUrl } from '../../../shared/network-proxy'
 import { normalizeKagiSessionLink } from '../../../shared/browser-url'
 import type { FolderWorkspace, WorkspaceKey } from '../../../shared/folder-workspace-types'
+import type { SftpWorkspaceProfile } from '../../../shared/sftp-types'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
 import type { OnboardingChecklistState } from '../../../shared/onboarding-state-types'
 import type {
@@ -193,12 +194,25 @@ import {
   PROTECTED_SECRET_SLOT,
   ProtectedSecretPersistence,
   sshPtyOwnerLeaseSecretSlot,
+  sshRememberedPassphraseSecretSlot,
+  sshRememberedPasswordSecretSlot,
   type ProtectedSecretRetentionUpdate
 } from '../../protected-secret-persistence'
 import {
   isLegacyOpenCodeSessionCookie,
   isLegacySshPtyOwnerLease
 } from '../leasing-ssh-ptys/secret-validation'
+import {
+  clearSftpHostTrust as clearSftpHostTrustOperation,
+  deleteSftpProfile as deleteSftpProfileOperation,
+  getSftpHostTrust as getSftpHostTrustOperation,
+  getSftpProfiles as getSftpProfilesOperation,
+  normalizeSftpHostTrust,
+  normalizeSftpProfiles,
+  saveSftpProfile as saveSftpProfileOperation,
+  setSftpHostTrust as setSftpHostTrustOperation,
+  type SftpProfileStateOperations
+} from '../leasing-ssh-ptys/sftp-profile-state'
 import { getDataFile, getGithubCacheFile, readGithubCacheSnapshot } from './user-data-path'
 import {
   STALE_DURABLE_WRITE_TEMP_AGE_MS,
@@ -1511,7 +1525,30 @@ export class Store {
             }
             return partitions
           })(),
-          sshTargets: (parsed.sshTargets ?? []).map(normalizeSshTarget),
+          sshTargets: (parsed.sshTargets ?? []).map(normalizeSshTarget).map((target) => {
+            // Why: remembered credentials ride the protected-secret slots;
+            // undecryptable/absent decrypts yield '' — treated as absent (spec).
+            const password = this.protectedSecrets.decrypt(
+              sshRememberedPasswordSecretSlot(target.id),
+              target.rememberedPassword ?? ''
+            )
+            const passphrase = this.protectedSecrets.decrypt(
+              sshRememberedPassphraseSecretSlot(target.id),
+              target.rememberedPassphrase ?? ''
+            )
+            // Why: always strip the raw (possibly ciphertext) fields — a failed
+            // decrypt yields '' and must surface as ABSENT, never as ciphertext.
+            const { rememberedPassword: _pw, rememberedPassphrase: _pp, ...rest } = target
+            void _pw
+            void _pp
+            return {
+              ...rest,
+              ...(password ? { rememberedPassword: password } : {}),
+              ...(passphrase ? { rememberedPassphrase: passphrase } : {})
+            }
+          }),
+          'sftp-profiles': normalizeSftpProfiles(parsed['sftp-profiles']),
+          'sftp-host-trust': normalizeSftpHostTrust(parsed['sftp-host-trust']),
           deletedSshConfigAliases: Array.isArray(parsed.deletedSshConfigAliases)
             ? parsed.deletedSshConfigAliases.filter(
                 (alias): alias is string => typeof alias === 'string'
@@ -1822,6 +1859,18 @@ export class Store {
           sshPtyOwnerLeaseSecretSlot(record.targetId),
           record.ownerLease
         )
+      })),
+      sshTargets: (this.state.sshTargets ?? []).map((target) => ({
+        ...target,
+        rememberedPassword: target.rememberedPassword
+          ? encryptToSentinel(sshRememberedPasswordSecretSlot(target.id), target.rememberedPassword)
+          : undefined,
+        rememberedPassphrase: target.rememberedPassphrase
+          ? encryptToSentinel(
+              sshRememberedPassphraseSecretSlot(target.id),
+              target.rememberedPassphrase
+            )
+          : undefined
       })),
       settings: {
         ...stripRetiredGlobalSettings(this.state.settings),
@@ -3442,6 +3491,49 @@ export class Store {
 
   removeSshTarget(id: string): void {
     removeSshTargetOperation(this.getSshTargetStateOperations(), id)
+  }
+
+  // ── SFTP profiles & host trust ────────────────────────────────────
+
+  private getSftpProfileStateOperations(): SftpProfileStateOperations {
+    return {
+      getSftpProfilesState: () => this.state['sftp-profiles'] ?? (this.state['sftp-profiles'] = {}),
+      setSftpProfilesState: (next) => {
+        this.state['sftp-profiles'] = next
+      },
+      getSftpHostTrustState: () =>
+        this.state['sftp-host-trust'] ?? (this.state['sftp-host-trust'] = {}),
+      setSftpHostTrustState: (next) => {
+        this.state['sftp-host-trust'] = next
+      },
+      scheduleSave: () => this.scheduleSave()
+    }
+  }
+
+  getSftpProfiles(workspacePath: string): SftpWorkspaceProfile[] {
+    return getSftpProfilesOperation(this.getSftpProfileStateOperations(), workspacePath)
+  }
+
+  saveSftpProfile(workspacePath: string, profile: SftpWorkspaceProfile): SftpWorkspaceProfile {
+    // Why: id generated on create at the store boundary (contracts.md).
+    const withId = profile.id === '' ? { ...profile, id: randomUUID() } : profile
+    return saveSftpProfileOperation(this.getSftpProfileStateOperations(), workspacePath, withId)
+  }
+
+  deleteSftpProfile(workspacePath: string, profileId: string): void {
+    deleteSftpProfileOperation(this.getSftpProfileStateOperations(), workspacePath, profileId)
+  }
+
+  getSftpHostTrust(hostKey: string): string | undefined {
+    return getSftpHostTrustOperation(this.getSftpProfileStateOperations(), hostKey)
+  }
+
+  setSftpHostTrust(hostKey: string, fingerprint: string): void {
+    setSftpHostTrustOperation(this.getSftpProfileStateOperations(), hostKey, fingerprint)
+  }
+
+  clearSftpHostTrust(hostKey: string): void {
+    clearSftpHostTrustOperation(this.getSftpProfileStateOperations(), hostKey)
   }
 
   // ── Live Claude PTY sessions ───────────────────────────────────────

@@ -3477,6 +3477,7 @@ function createSshApi(): NonNullable<Partial<PreloadApi>['ssh']> {
       return state
     },
     needsPassphrasePrompt: () => Promise.resolve(false),
+    clearRememberedCredential: () => Promise.resolve(),
     testConnection: () =>
       Promise.resolve({
         success: false,

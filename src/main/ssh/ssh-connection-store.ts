@@ -3,6 +3,7 @@ import type { SshRepoReadoption, SshTarget } from '../../shared/ssh-types'
 import { RUNTIME_OWNED_SSH_TARGET_ID_PREFIX } from '../../shared/execution-host'
 import { normalizeSshConfigAlias } from '../../shared/ssh-config-alias'
 import { loadUserSshConfig, sshConfigHostsToTargets } from './ssh-config-parser'
+import type { SshCredentialKind } from './ssh-connection-utils'
 import {
   buildRemovedSshTargetTombstone,
   readoptOrphanedWorkspacesForTarget
@@ -13,6 +14,38 @@ export class SshConnectionStore {
 
   listTargets(): SshTarget[] {
     return this.store.getSshTargets().filter((target) => !isRuntimeOwnedSshTarget(target))
+  }
+
+  // ── Remembered credentials (D3: opt-in, safeStorage-encrypted on disk) ──
+
+  rememberCredential(targetId: string, kind: SshCredentialKind, value: string): void {
+    if (!value) {
+      return
+    }
+    this.store.updateSshTarget(
+      targetId,
+      kind === 'password' ? { rememberedPassword: value } : { rememberedPassphrase: value }
+    )
+  }
+
+  /** Value a new connection seeds its credential cache with; undefined → prompt. */
+  getRememberedCredential(targetId: string, kind: SshCredentialKind): string | undefined {
+    const target = this.store.getSshTarget(targetId)
+    if (!target) {
+      return undefined
+    }
+    const value = kind === 'password' ? target.rememberedPassword : target.rememberedPassphrase
+    return value || undefined
+  }
+
+  clearRememberedCredential(targetId: string, kind: SshCredentialKind): void {
+    if (!this.store.getSshTarget(targetId)) {
+      return
+    }
+    this.store.updateSshTarget(
+      targetId,
+      kind === 'password' ? { rememberedPassword: undefined } : { rememberedPassphrase: undefined }
+    )
   }
 
   /** Map of removed-target id → its last known label, from the re-adoption

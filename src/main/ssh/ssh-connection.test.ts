@@ -57,6 +57,20 @@ describe('SshConnection', () => {
     expect(conn.getHostKeyFingerprint()).toMatch(/^SHA256:[A-Za-z\d+/]{43}$/)
   })
 
+  it('keeps the unconditional host-key policy on terminal connections (SFTP TOFU stays scoped)', async () => {
+    const conn = new SshConnection(createTarget(), createCallbacks())
+    await conn.connect()
+
+    const verifier = (
+      clientInstances[0].lastConnectConfig as { hostVerifier?: (key: Buffer) => boolean }
+    ).hostVerifier
+    expect(verifier).toBeTypeOf('function')
+    // Why: terminal policy is deliberately unchanged (design D5) — the verifier
+    // accepts any key; TOFU applies only to SFTP-dedicated connections.
+    expect(verifier?.(Buffer.from('any-terminal-host-key'))).toBe(true)
+    expect(conn.getState().status).toBe('connected')
+  })
+
   it('ignores a late host fingerprint from an obsolete connect generation', async () => {
     const conn = new SshConnection(createTarget(), createCallbacks())
     await conn.connect()
