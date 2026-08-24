@@ -35,6 +35,23 @@
       "menuBarIcon": {
         "title": "显示菜单栏图标",
         "description": "在 macOS 菜单栏中保留 Orca 快捷方式和活动指示器。"
+      },
+      "backgroundImage": {
+        "title": "背景图片",
+        "description": "使用自己选择的图片作为应用背景。",
+        "choose": "选择图片…",
+        "change": "更换图片…",
+        "remove": "移除",
+        "opacityLabel": "图片不透明度",
+        "terminalHint": "终端背景默认不透明，图片只会在终端以外的区域显示。",
+        "terminalHintLink": "调低终端背景不透明度",
+        "importFailed": "导入图片失败",
+        "search": {
+          "background": "背景",
+          "image": "图片",
+          "wallpaper": "壁纸",
+          "opacity": "不透明度"
+        }
       }
     }
   },

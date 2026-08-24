@@ -211,6 +211,7 @@ vi.mock('../source-control/pull-request-linked-issue', () => ({
 
 import { registerFilesystemHandlers } from './filesystem'
 import { invalidateAuthorizedRootsCache, registerWorktreeRootsForRepo } from './filesystem-auth'
+import { fileListingCancellationError } from '../../shared/file-listing-cancellation'
 
 // Why: paths are resolved via path.resolve() in production code, so test
 // data must use resolved paths to avoid Unix-vs-Windows mismatches.
@@ -3156,5 +3157,34 @@ describe('registerFilesystemHandlers', () => {
     expect(() =>
       handlers.get('fs:cancelListFiles')!(senderEvent, { requestToken: 'unknown' })
     ).not.toThrow()
+  })
+
+  // Why: the git/relay listing layers reject with FileListingCancelledError by
+  // contract; letting it escape the handler logged "Error occurred in handler
+  // for 'fs:listFiles'" on every quick-open supersede.
+  it('fs:listFiles resolves [] when the listing is cancelled by a newer request', async () => {
+    const listFilesMock = vi.fn(
+      (_rootPath: string, options: { signal?: AbortSignal }) =>
+        new Promise<string[]>((_resolve, reject) => {
+          options.signal?.addEventListener(
+            'abort',
+            () => reject(fileListingCancellationError(options.signal)),
+            { once: true }
+          )
+        })
+    )
+    getSshFilesystemProviderMock.mockReturnValue({ listFiles: listFilesMock })
+
+    registerFilesystemHandlers(store as never)
+
+    const senderEvent = { sender: { id: 9 } }
+    const pending = handlers.get('fs:listFiles')!(senderEvent, {
+      rootPath: '/home/user/repo',
+      connectionId: 'conn-1',
+      requestToken: 'token-cancel'
+    }) as Promise<string[]>
+
+    await handlers.get('fs:cancelListFiles')!(senderEvent, { requestToken: 'token-cancel' })
+    await expect(pending).resolves.toEqual([])
   })
 })

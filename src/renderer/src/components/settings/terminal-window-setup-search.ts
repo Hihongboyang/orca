@@ -31,6 +31,9 @@ export const getManageSessionsSearchEntries = createLocalizedCatalog(() => [
   }
 ])
 
+/** Stable Settings deep-link / scroll target for the terminal background opacity control. */
+export const TERMINAL_BACKGROUND_OPACITY_SETTING_ID = 'terminal-background-opacity'
+
 export const getTerminalWindowSearchEntries = createLocalizedCatalog(() => [
   {
     title: translate('auto.components.settings.terminal.search.b36fd2416d', 'Background Opacity'),

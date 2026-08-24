@@ -35,6 +35,23 @@
       "menuBarIcon": {
         "title": "메뉴 바 아이콘 표시",
         "description": "macOS 메뉴 바에 Orca 바로가기 및 활동 표시기를 유지합니다."
+      },
+      "backgroundImage": {
+        "title": "배경 이미지",
+        "description": "직접 선택한 이미지를 앱 배경으로 사용합니다.",
+        "choose": "이미지 선택…",
+        "change": "이미지 변경…",
+        "remove": "제거",
+        "opacityLabel": "이미지 불투명도",
+        "terminalHint": "터미널 배경은 기본적으로 불투명하므로 이미지는 터미널 외부 영역에만 표시됩니다.",
+        "terminalHintLink": "터미널 배경 불투명도 낮추기",
+        "importFailed": "이미지 가져오기 실패",
+        "search": {
+          "background": "배경",
+          "image": "이미지",
+          "wallpaper": "배경화면",
+          "opacity": "불투명도"
+        }
       }
     }
   },

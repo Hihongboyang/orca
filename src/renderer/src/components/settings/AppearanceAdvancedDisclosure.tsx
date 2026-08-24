@@ -12,6 +12,8 @@ type AppearanceAdvancedDisclosureProps = {
   showTopBorder?: boolean
   className?: string
   contentClassName?: string
+  /** One-shot override for nested deep links whose target row lives inside this disclosure. */
+  forceExpanded?: boolean
   children: React.ReactNode
 }
 
@@ -23,12 +25,13 @@ export function AppearanceAdvancedDisclosure({
   showTopBorder = true,
   className,
   contentClassName,
+  forceExpanded = false,
   children
 }: AppearanceAdvancedDisclosureProps): React.JSX.Element {
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
   const isSearching = normalizeSettingsSearchQuery(searchQuery).length > 0
   const [open, setOpen] = useState(false)
-  const expanded = open || isSearching
+  const expanded = open || isSearching || forceExpanded
 
   return (
     <div className={cn('mt-3 pt-2', showTopBorder && 'border-t border-border/50', className)}>

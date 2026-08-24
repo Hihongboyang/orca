@@ -65,6 +65,7 @@ import type {
   BaseRefDefaultResult,
   BrowserViewportOverride,
   CustomPet,
+  BackgroundImage,
   FsChangedPayload,
   FilesystemPathFlavor,
   GetRateLimitResult,
@@ -2477,6 +2478,14 @@ const api = {
       ipcRenderer.invoke('pet:read', id, fileName, kind),
     delete: (id: string, fileName: string, kind?: 'image' | 'bundle'): Promise<void> =>
       ipcRenderer.invoke('pet:delete', id, fileName, kind)
+  },
+
+  backgroundImage: {
+    import: (): Promise<BackgroundImage | null> => ipcRenderer.invoke('background-image:import'),
+    read: (id: string, fileName: string): Promise<ArrayBuffer | null> =>
+      ipcRenderer.invoke('background-image:read', id, fileName),
+    delete: (id: string, fileName: string): Promise<void> =>
+      ipcRenderer.invoke('background-image:delete', id, fileName)
   },
 
   browser: {

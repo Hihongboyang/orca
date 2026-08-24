@@ -126,6 +126,7 @@ import type {
   FolderWorkspacePathStatusRequest
 } from '../shared/folder-workspace-path-status'
 import type {
+  BackgroundImage,
   BaseRefDefaultResult,
   BaseRefSearchResult,
   BrowserCookieImportResult,
@@ -2597,6 +2598,11 @@ export type PreloadApi = {
     importPetBundle: () => Promise<CustomPet | null>
     read: (id: string, fileName: string, kind?: 'image' | 'bundle') => Promise<ArrayBuffer | null>
     delete: (id: string, fileName: string, kind?: 'image' | 'bundle') => Promise<void>
+  }
+  backgroundImage: {
+    import: () => Promise<BackgroundImage | null>
+    read: (id: string, fileName: string) => Promise<ArrayBuffer | null>
+    delete: (id: string, fileName: string) => Promise<void>
   }
   browser: BrowserApi
   emulator: EmulatorApi

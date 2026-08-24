@@ -685,7 +685,10 @@ function Settings(): React.JSX.Element {
     if (settingsNavigationTarget.pane === 'appearance') {
       const accordion = resolveAppearanceAccordionDeepLink(settingsNavigationTarget.sectionId)
       if (accordion) {
-        useAppStore.getState().setAppearanceAccordionDeepLink(accordion)
+        useAppStore.getState().setAppearanceAccordionDeepLink({
+          section: accordion,
+          settingId: settingsNavigationTarget.sectionId
+        })
       }
     }
     if (settingsNavigationTarget.intent === 'add-quick-command') {

@@ -31,6 +31,7 @@ import type {
 import type { GitHistoryOptions, GitHistoryResult } from '../../shared/git-history'
 import type { SshMutationExpectation } from '../../shared/ssh-types'
 import { sortDirEntries } from '../../shared/file-name-sort'
+import { isFileListingCancellation } from '../../shared/file-listing-cancellation'
 import { assertSshMutationExpectation } from '../ssh/ssh-connection-generation'
 import {
   buildRgArgs,
@@ -1103,6 +1104,15 @@ export function registerFilesystemHandlers(
           })
         }
         return await listQuickOpenFiles(args.rootPath, store, args.excludePaths, controller?.signal)
+      } catch (error) {
+        // Why: a superseded/aborted scan is not a failure — resolve with the
+        // same "no results" sentinel as a missing provider instead of letting
+        // the cancellation escape ipcMain.handle as an "Error occurred in
+        // handler" log line (the renderer already ignores stale requests).
+        if (isFileListingCancellation(error)) {
+          return []
+        }
+        throw error
       } finally {
         listFilesCancellations.finish(event, args.requestToken, controller)
       }

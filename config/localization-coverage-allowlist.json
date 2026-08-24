@@ -7,6 +7,69 @@
     "count": 1
   },
   {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "背景",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "背景图",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "壁纸",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "背景画像",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "壁紙",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "배경",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "워터페이퍼",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "fondo",
+    "dynamic": false,
+    "count": 1
+  },
+  {
+    "filePath": "src/renderer/src/components/settings/appearance-background-image-search.ts",
+    "kind": "object-property:keywords",
+    "text": "papel tapiz",
+    "dynamic": false,
+    "count": 1
+  },
+  {
     "filePath": "src/renderer/src/components/settings/appearance-search.ts",
     "kind": "object-property:keywords",
     "text": "语言",

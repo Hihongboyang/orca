@@ -149,6 +149,7 @@ import {
 } from './startup/startup-diagnostics'
 import { reconnectSshTargetForRendererStartup } from './startup/ssh-startup-reconnect'
 import { shouldRenderPetOverlay } from './components/pet/pet-overlay-visibility'
+import { useAppBackgroundImageStyle } from './components/background-image/use-app-background-image-style'
 import { applyDocumentTheme } from './lib/document-theme'
 import { getSystemPrefersDark } from './lib/terminal-theme'
 import { publishTerminalViewAttributesAtAppStart } from './components/terminal-pane/terminal-appearance'
@@ -701,6 +702,7 @@ function App(): React.JSX.Element {
     petEnabled,
     petVisible
   })
+  const appBackgroundImageStyle = useAppBackgroundImageStyle()
   const canGoBackWorktree = useAppStore(canGoBackWorktreeHistory)
   const canGoForwardWorktree = useAppStore(canGoForwardWorktreeHistory)
   const titlebarLeftControlsRef = useRef<HTMLDivElement | null>(null)
@@ -2228,9 +2230,10 @@ function App(): React.JSX.Element {
   return (
     <div
       ref={setAppRootNode}
-      className="app-layout"
+      className={`app-layout${appBackgroundImageStyle ? ' app-background-image' : ''}`}
       style={
         {
+          ...appBackgroundImageStyle,
           '--collapsed-sidebar-header-width': `${collapsedSidebarHeaderWidth}px`,
           // Shared so surfaces can avoid the Windows/Linux window-controls overlay without hardcoding 138px everywhere.
           '--window-controls-width': hasCustomTitleBar ? '138px' : '0px',

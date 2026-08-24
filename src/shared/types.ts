@@ -2814,6 +2814,10 @@ export type GlobalSettings = {
   terminalDividerThicknessPx: number
   terminalBackgroundOpacity?: number
   terminalColorOverrides?: TerminalColorOverrides
+  /** App background image; absent = solid color. Desktop main window only — web/mobile clients ignore the key (bytes are local to userData/backgrounds/). */
+  backgroundImage?: BackgroundImage
+  /** App background image opacity as a 0–1 float; absent = 1 (fully shown). Clamped on read. */
+  backgroundImageOpacity?: number
   terminalPaddingX?: number
   terminalPaddingY?: number
   terminalMouseHideWhileTyping?: boolean
@@ -3543,6 +3547,24 @@ export type PersistedUIState = {
 export const PET_SIZE_MIN = 60
 export const PET_SIZE_MAX = 360
 export const PET_SIZE_DEFAULT = 180
+
+export const BACKGROUND_IMAGE_OPACITY_MAX = 1
+
+/** Clamp persisted opacity into [0, 1]; non-finite values fall back to fully shown. */
+export function normalizeBackgroundImageOpacity(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return BACKGROUND_IMAGE_OPACITY_MAX
+  }
+  return Math.min(BACKGROUND_IMAGE_OPACITY_MAX, Math.max(0, value))
+}
+
+/** User-selected app background image; renderer fetches bytes from main via background-image:read, never learning the on-disk path. */
+export type BackgroundImage = {
+  id: string
+  /** On-disk name `<id>.<ext>` under userData/backgrounds/; extension kept so reads can rebuild the Blob MIME. */
+  fileName: string
+  mimeType: string
+}
 
 /** User-uploaded pet image metadata; renderer fetches bytes from main via pet:read (id, fileName), never learning the on-disk path. */
 export type CustomPet = {

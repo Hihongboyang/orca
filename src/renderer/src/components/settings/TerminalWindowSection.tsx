@@ -8,6 +8,7 @@ import { SearchableSetting } from './SearchableSetting'
 import { clampNumber } from '@/lib/terminal-theme'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { translate } from '@/i18n/i18n'
+import { TERMINAL_BACKGROUND_OPACITY_SETTING_ID } from './terminal-window-setup-search'
 
 type TerminalWindowSectionProps = {
   settings: GlobalSettings
@@ -61,6 +62,7 @@ export function TerminalWindowSection({
 
       <div className="ml-4 space-y-4">
         <SearchableSetting
+          id={TERMINAL_BACKGROUND_OPACITY_SETTING_ID}
           title={translate(
             'auto.components.settings.TerminalWindowSection.ea7b1a158e',
             'Background Opacity'
