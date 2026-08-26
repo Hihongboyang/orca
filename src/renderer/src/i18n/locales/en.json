@@ -11353,6 +11353,7 @@
           "b8e7f05b3a": "Add profile",
           "098799b458": "No SFTP profiles for this workspace yet.",
           "7035d2d95f": "Delete profile",
+          "15141eab3a": "Edit profile",
           "74341e3c27": "Label",
           "61ad50a9b9": "Target",
           "a2c419e375": "Select target…",
@@ -14672,7 +14673,8 @@
         },
         "SftpCompareDialog": {
           "8173ee67c1": "SFTP compare — {{value0}}",
-          "6eb78fac8b": "Local (left) vs remote (right), read-only — {{value0}}"
+          "6eb78fac8b": "Local (left) vs remote (right), read-only — {{value0}}",
+          "9d4f8f1c1a": "Loading comparison..."
         }
       },
       "diff": {

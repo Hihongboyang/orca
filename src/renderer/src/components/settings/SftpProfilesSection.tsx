@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { SshTarget } from '../../../../shared/ssh-types'
 import type { SftpWorkspaceProfile } from '../../../../shared/sftp-types'
 import { Button } from '../ui/button'
@@ -65,6 +65,18 @@ export function SftpProfilesSection({
   const openForm = (): void => {
     setErrors({})
     setForm({ ...EMPTY_FORM, localRoot: workspacePath })
+  }
+
+  // Edit keeps the profile id so save() upserts in place (spec: id stable across renames).
+  const startEdit = (profile: SftpWorkspaceProfile): void => {
+    setErrors({})
+    setForm({
+      id: profile.id,
+      label: profile.label,
+      targetId: profile.targetId,
+      localRoot: profile.localRoot,
+      defaultRemoteDir: profile.defaultRemoteDir
+    })
   }
 
   const save = async (): Promise<void> => {
@@ -165,6 +177,18 @@ export function SftpProfilesSection({
               <Button
                 variant="ghost"
                 size="icon"
+                className="size-7 text-muted-foreground"
+                aria-label={translate(
+                  'auto.components.settings.SftpProfilesSection.15141eab3a',
+                  'Edit profile'
+                )}
+                onClick={() => startEdit(profile)}
+              >
+                <Pencil className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 className="size-7 text-muted-foreground hover:text-red-400"
                 aria-label={translate(
                   'auto.components.settings.SftpProfilesSection.7035d2d95f',
@@ -181,6 +205,14 @@ export function SftpProfilesSection({
 
       {form !== null ? (
         <div className="space-y-2 rounded-lg border border-border/50 bg-card/40 p-3">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {form.id === ''
+              ? translate('auto.components.settings.SftpProfilesSection.b8e7f05b3a', 'Add profile')
+              : translate(
+                  'auto.components.settings.SftpProfilesSection.15141eab3a',
+                  'Edit profile'
+                )}
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1">
               <span className="text-[11px] font-medium text-muted-foreground">
