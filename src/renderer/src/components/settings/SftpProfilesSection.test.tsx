@@ -123,4 +123,55 @@ describe('SftpProfilesSection', () => {
     })
     expect(screen.queryByRole('dialog')).toBeNull()
   })
+
+  it('prefills the form with existing values when editing a profile', async () => {
+    api.listProfiles.mockResolvedValue([
+      {
+        id: 'p1',
+        label: 'prod',
+        targetId: 'ssh-1',
+        localRoot: 'E:\\dev\\app',
+        defaultRemoteDir: '/srv/app'
+      }
+    ])
+    render(<SftpProfilesSection workspacePath={WORKSPACE_PATH} targets={targets} />)
+    await waitFor(() => expect(screen.getByText('prod')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /Edit profile/i }))
+    expect((screen.getByLabelText(/Label/i) as HTMLInputElement).value).toBe('prod')
+    expect((screen.getByLabelText(/Target/i) as HTMLSelectElement).value).toBe('ssh-1')
+    expect((screen.getByLabelText(/Local root/i) as HTMLInputElement).value).toBe('E:\\dev\\app')
+    expect((screen.getByLabelText(/Remote dir/i) as HTMLInputElement).value).toBe('/srv/app')
+  })
+
+  it('saves an edit in place with the original profile id', async () => {
+    api.listProfiles.mockResolvedValue([
+      {
+        id: 'p1',
+        label: 'prod',
+        targetId: 'ssh-1',
+        localRoot: 'E:\\dev\\app',
+        defaultRemoteDir: '/srv/app'
+      }
+    ])
+    render(<SftpProfilesSection workspacePath={WORKSPACE_PATH} targets={targets} />)
+    await waitFor(() => expect(screen.getByText('prod')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /Edit profile/i }))
+    fireEvent.change(screen.getByLabelText(/Label/i), { target: { value: 'prod-eu' } })
+    fireEvent.change(screen.getByLabelText(/Remote dir/i), { target: { value: '/srv/eu' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }))
+
+    await waitFor(() => expect(api.saveProfile).toHaveBeenCalledTimes(1))
+    expect(api.saveProfile).toHaveBeenCalledWith({
+      workspacePath: 'E:\\dev\\app',
+      profile: {
+        id: 'p1',
+        label: 'prod-eu',
+        targetId: 'ssh-1',
+        localRoot: 'E:\\dev\\app',
+        defaultRemoteDir: '/srv/eu'
+      }
+    })
+  })
 })
