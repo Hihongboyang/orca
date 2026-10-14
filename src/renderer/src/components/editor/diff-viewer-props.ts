@@ -1,3 +1,4 @@
+import type { editor } from 'monaco-editor'
 import type { LargeDiffRenderLimit } from './large-diff-render-limit'
 
 export type DiffViewerProps = {
@@ -24,6 +25,9 @@ export type DiffViewerProps = {
   addLineCommentPlaceholder?: string
   onContentChange?: (content: string) => void
   onSave?: (content: string) => void
+  /** Hands back the mounted diff editor (nulled on dispose) so callers can
+   * drive hunk navigation/apply — ownership stays with this component. */
+  onDiffEditorReady?: (diffEditor: editor.IStandaloneDiffEditor | null) => void
   largeDiffRenderLimit?: LargeDiffRenderLimit
   // Why: main-process limited diffs intentionally blank text bodies before IPC;
   // the fallback must not treat that placeholder as a saveable draft.

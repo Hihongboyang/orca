@@ -1,13 +1,18 @@
-// sftp:compare handler (contracts.md) — split from sftp-transfer.ts to respect
-// the repo line budget (no max-lines disables per AGENTS.md).
+// sftp:compare + sftp:save-remote handlers (contracts.md) — split from
+// sftp-transfer.ts to respect the repo line budget (no max-lines disables
+// per AGENTS.md).
+import { ipcMain } from 'electron'
 import { open } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import type { Readable } from 'node:stream'
+import type { Readable, Writable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import type { Store } from '../persistence'
 import type { SshTarget } from '../../shared/ssh-types'
 import {
+  SFTP_COMPARE_CHANNEL,
   SFTP_COMPARE_MAX_BYTES,
+  SFTP_SAVE_REMOTE_CHANNEL,
+  type SftpSaveRemoteArgs,
   type SftpTransferErrorCode,
   type SftpWorkspaceProfile
 } from '../../shared/sftp-types'
@@ -123,4 +128,114 @@ export async function runSftpCompare(args: {
     throw new IpcSftpError('compare-binary-refused', 'Binary compare is not supported')
   }
   return { content: content.toString('utf-8') }
+}
+
+/** Save-back (add-sftp-compare-edit D2): truncate-write the compare dialog's
+ * edited remote pane to the mirror path on a dedicated short-lived session. */
+export async function runSftpSaveRemote(args: {
+  store: Store
+  confirmHostKey: (hostKey: string, fingerprint: string) => Promise<boolean>
+  makeCredentialRequest: (
+    targetId: string
+  ) => (kind: 'password' | 'passphrase', detail: string) => Promise<string | null>
+  resolveProfile: (workspacePath: string, profileId: string) => SftpWorkspaceProfile
+  requireTarget: (profile: SftpWorkspaceProfile) => SshTarget
+  toIpcSftpError: (err: unknown) => Error
+  workspacePath: string
+  profileId: string
+  localPath: string
+  content: string
+}): Promise<{ bytesWritten: number }> {
+  const {
+    store,
+    confirmHostKey,
+    makeCredentialRequest,
+    resolveProfile,
+    requireTarget,
+    toIpcSftpError
+  } = args
+  const profile = resolveProfile(args.workspacePath, args.profileId)
+  const target = requireTarget(profile)
+  const remotePath = await resolveRemoteMirrorPath(profile, args.localPath).catch(toIpcSftpError)
+  if (remotePath instanceof Error) {
+    throw remotePath
+  }
+
+  const payload = Buffer.from(args.content, 'utf-8')
+  if (payload.byteLength > SFTP_COMPARE_MAX_BYTES) {
+    throw new IpcSftpError(
+      'compare-file-too-large',
+      `Edited content is ${payload.byteLength} bytes; save-back is capped at ${SFTP_COMPARE_MAX_BYTES} bytes`
+    )
+  }
+
+  const written = await withSftpSession(
+    target,
+    {
+      hostTrustStore: store,
+      confirmHostKey,
+      onCredentialRequest: makeCredentialRequest(target.id)
+    },
+    async (sftp) => {
+      const stream = sftp.createWriteStream(remotePath) as unknown as Writable
+      // Why: persistent listener — late ssh2 teardown emits must not throw uncaught.
+      attachPersistentStreamErrorGuard(stream)
+      // Why: ssh2 createWriteStream defaults to O_WRONLY|O_CREAT|O_TRUNC — the
+      // write replaces the remote file, matching upload overwrite semantics.
+      stream.end(payload)
+      await finished(stream, { cleanup: true })
+      return payload.byteLength
+    }
+  ).catch(toIpcSftpError)
+  if (written instanceof Error) {
+    throw written
+  }
+  return { bytesWritten: written }
+}
+
+/** Registers the compare IPC handler (called from registerSftpTransferHandlers). */
+export function registerSftpCompareHandler(wiring: {
+  store: Store
+  confirmHostKey: (hostKey: string, fingerprint: string) => Promise<boolean>
+  makeCredentialRequest: (
+    targetId: string
+  ) => (kind: 'password' | 'passphrase', detail: string) => Promise<string | null>
+  resolveProfile: (workspacePath: string, profileId: string) => SftpWorkspaceProfile
+  requireTarget: (profile: SftpWorkspaceProfile) => SshTarget
+  toIpcSftpError: (err: unknown) => Error
+}): void {
+  ipcMain.removeHandler(SFTP_COMPARE_CHANNEL)
+  ipcMain.handle(
+    SFTP_COMPARE_CHANNEL,
+    (_event, args: { workspacePath: string; profileId: string; localPath: string }) =>
+      runSftpCompare({
+        ...wiring,
+        workspacePath: args.workspacePath,
+        profileId: args.profileId,
+        localPath: args.localPath
+      })
+  )
+}
+
+/** Registers the save-back IPC handler (called from registerSftpTransferHandlers). */
+export function registerSftpSaveRemoteHandler(wiring: {
+  store: Store
+  confirmHostKey: (hostKey: string, fingerprint: string) => Promise<boolean>
+  makeCredentialRequest: (
+    targetId: string
+  ) => (kind: 'password' | 'passphrase', detail: string) => Promise<string | null>
+  resolveProfile: (workspacePath: string, profileId: string) => SftpWorkspaceProfile
+  requireTarget: (profile: SftpWorkspaceProfile) => SshTarget
+  toIpcSftpError: (err: unknown) => Error
+}): void {
+  ipcMain.removeHandler(SFTP_SAVE_REMOTE_CHANNEL)
+  ipcMain.handle(SFTP_SAVE_REMOTE_CHANNEL, (_event, args: SftpSaveRemoteArgs) =>
+    runSftpSaveRemote({
+      ...wiring,
+      workspacePath: args.workspacePath,
+      profileId: args.profileId,
+      localPath: args.localPath,
+      content: args.content
+    })
+  )
 }

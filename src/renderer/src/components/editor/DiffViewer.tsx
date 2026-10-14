@@ -46,6 +46,7 @@ export default function DiffViewer({
   addLineCommentPlaceholder,
   onContentChange,
   onSave,
+  onDiffEditorReady,
   largeDiffRenderLimit,
   largeDiffSaveContentAvailable
 }: DiffViewerProps): React.JSX.Element {
@@ -271,11 +272,9 @@ export default function DiffViewer({
   onSaveRef.current = onSave
   const onContentChangeRef = useRef(onContentChange)
   onContentChangeRef.current = onContentChange
-
+  const propsRef = useRef({ relativePath, language, onSave, onDiffEditorReady })
+  propsRef.current = { relativePath, language, onSave, onDiffEditorReady }
   const { setupCopy, toastNode } = useContextualCopySetup()
-
-  const propsRef = useRef({ relativePath, language, onSave })
-  propsRef.current = { relativePath, language, onSave }
   const currentDiffModelPaths = useDiffViewerLargeDiffLifecycle({
     limited: renderLimit.limited,
     modelKey,
@@ -289,6 +288,7 @@ export default function DiffViewer({
     (diffEditor, monaco) => {
       diffEditorRef.current = diffEditor
       registerDiffEditor(diffEditor)
+      propsRef.current.onDiffEditorReady?.(diffEditor)
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
 
@@ -339,6 +339,7 @@ export default function DiffViewer({
         lineNumberOptionsSubRef.current?.dispose()
         lineNumberOptionsSubRef.current = null
         diffEditorRef.current = null
+        propsRef.current.onDiffEditorReady?.(null)
         unregisterDiffEditor(diffEditor)
         setModifiedEditor(null)
         setPopover(null)

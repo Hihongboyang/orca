@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
 import { useActiveWorktree, useRepoById } from '@/store/selectors'
 import { basename } from '@/lib/path'
 import { cn } from '@/lib/utils'
 import { isGitRepoKind } from '../../../../shared/repo-kind'
+import type { SftpWorkspaceProfile } from '../../../../shared/sftp-types'
 import { getVisibleFileExplorerWorktreePath } from './file-explorer-reset'
 import { FileExplorerBackgroundMenu } from './FileExplorerBackgroundMenu'
 import { FileExplorerFilesTreePane } from './FileExplorerFilesTreePane'
@@ -49,17 +50,28 @@ function FileExplorerFiles(): React.JSX.Element {
   const toggleShowDotfilesForWorktree = useAppStore((s) => s.toggleShowDotfilesForWorktree)
 
   const worktreePath = activeWorktree?.path ?? null
+  // Why: sessionKey rotates the compare dialog's Monaco model keys so every
+  // open renders fresh content instead of reusing kept-alive models (D1).
+  const nextSftpCompareSessionRef = useRef(0)
   const [sftpCompare, setSftpCompare] = useState<{
+    sessionKey: number
     localPath: string
     remoteContent: string
-    profileLabel: string
+    profile: SftpWorkspaceProfile
+    workspacePath: string
   } | null>(null)
   const sftpRowMenu = useSftpExplorerMenu({
     workspacePath: worktreePath,
     // Why: SSH remote workspaces hide the SFTP submenus entirely (D10).
     isSshWorkspace: Boolean(activeRepo?.connectionId),
-    onCompare: (content, localPath, profileLabel) =>
-      setSftpCompare({ localPath, remoteContent: content, profileLabel })
+    onCompare: ({ content, localPath, profile, workspacePath }) =>
+      setSftpCompare({
+        sessionKey: ++nextSftpCompareSessionRef.current,
+        localPath,
+        remoteContent: content,
+        profile,
+        workspacePath
+      })
   })
   const isFilesViewActive = explorerView === 'files'
   const visibleFilesWorktreePath = getVisibleFileExplorerWorktreePath({
@@ -316,9 +328,11 @@ function FileExplorerFiles(): React.JSX.Element {
       {sftpCompare ? (
         <SftpCompareDialog
           open
+          sessionKey={sftpCompare.sessionKey}
           localPath={sftpCompare.localPath}
           remoteContent={sftpCompare.remoteContent}
-          profileLabel={sftpCompare.profileLabel}
+          profile={sftpCompare.profile}
+          workspacePath={sftpCompare.workspacePath}
           onClose={() => setSftpCompare(null)}
         />
       ) : null}

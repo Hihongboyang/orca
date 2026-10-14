@@ -9,7 +9,6 @@ import type { SshTarget } from '../../shared/ssh-types'
 import {
   SFTP_UPLOAD_CHANNEL,
   SFTP_DOWNLOAD_CHANNEL,
-  SFTP_COMPARE_CHANNEL,
   SFTP_CANCEL_TRANSFER_CHANNEL,
   SFTP_CONFIRM_HOST_KEY_CHANNEL,
   SFTP_TRANSFER_PROGRESS_CHANNEL,
@@ -22,8 +21,13 @@ import {
 import { withSftpSession } from '../ssh/sftp-transfer-session'
 import { requestCredential } from './ssh-passphrase'
 import { uploadLocalTo } from '../ssh/sftp-upload-batch'
+import {
+  registerSftpCompareHandler,
+  registerSftpSaveRemoteHandler,
+  toIpcSftpError,
+  IpcSftpError
+} from './sftp-transfer-compare'
 import { registerSftpProfileHandlers, sftpWorkspaceKey } from './sftp-profiles-ipc'
-import { runSftpCompare, toIpcSftpError, IpcSftpError } from './sftp-transfer-compare'
 import { downloadRemoteTo } from '../ssh/sftp-download'
 import { collectUploadIgnoreSet, isUploadSkippedRelative } from '../ssh/sftp-upload-ignore'
 import { resolveRemoteMirrorPath } from '../ssh/sftp-mirror-path'
@@ -314,29 +318,15 @@ export function registerSftpTransferHandlers(
     }
   )
 
-  // ── compare ───────────────────────────────────────────────────────
-
-  ipcMain.removeHandler(SFTP_COMPARE_CHANNEL)
-  ipcMain.handle(
-    SFTP_COMPARE_CHANNEL,
-    (
-      _event,
-      args: {
-        workspacePath: string
-        profileId: string
-        localPath: string
-      }
-    ) =>
-      runSftpCompare({
-        store,
-        confirmHostKey,
-        makeCredentialRequest,
-        resolveProfile,
-        requireTarget,
-        toIpcSftpError,
-        workspacePath: args.workspacePath,
-        profileId: args.profileId,
-        localPath: args.localPath
-      })
-  )
+  // ── compare + save-back (compare dialog) ───────────────────────────
+  const compareWiring = {
+    store,
+    confirmHostKey,
+    makeCredentialRequest,
+    resolveProfile,
+    requireTarget,
+    toIpcSftpError
+  }
+  registerSftpCompareHandler(compareWiring)
+  registerSftpSaveRemoteHandler(compareWiring)
 }

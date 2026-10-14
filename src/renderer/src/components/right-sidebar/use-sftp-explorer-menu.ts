@@ -5,7 +5,12 @@ import { useAppStore } from '@/store'
 import { runSftpExplorerAction, type SftpExplorerActionKind } from './sftp-transfer-actions'
 import type { SftpRowMenu } from './FileExplorerSftpMenu'
 
-export type OpenSftpCompare = (content: string, localPath: string, profileLabel: string) => void
+export type OpenSftpCompare = (options: {
+  content: string
+  localPath: string
+  profile: SftpWorkspaceProfile
+  workspacePath: string
+}) => void
 
 /**
  * SFTP context-menu model for the file explorer (D10/D12): null on SSH remote
@@ -79,7 +84,12 @@ export function useSftpExplorerMenu(options: {
           workspacePath,
           localPath,
           onCompareContent: (content, comparedProfile, comparedLocalPath) =>
-            onCompare(content, comparedLocalPath, comparedProfile.label)
+            onCompare({
+              content,
+              localPath: comparedLocalPath,
+              profile: comparedProfile,
+              workspacePath
+            })
         })
       },
       onOpenSettings: () => {
