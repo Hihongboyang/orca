@@ -56,6 +56,11 @@ export async function runSftpExplorerAction(options: {
       )
   } catch (err) {
     const parsed = parseSftpIpcError(err)
+    // Why: mismatch already drives its dedicated block dialog in the Surface —
+    // raising here too would double-prompt (add-sftp-action-error-dialog D2).
+    if (parsed.code !== 'host-key-mismatch') {
+      useAppStore.getState().setSftpActionError(parsed)
+    }
     useAppStore.getState().failSftpTransfer(requestId, parsed.message, parsed.code)
   }
 }
