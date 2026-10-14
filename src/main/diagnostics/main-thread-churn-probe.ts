@@ -76,8 +76,8 @@ export function classifySubprocessCommand(command: string, args: readonly string
 
 export type SubprocessSpawnStats = {
   count: number
-  // Cumulative and worst synchronous cost of initiating the spawn (the
-  // uv_spawn → posix_spawn call runs on the main thread before returning).
+  // Cumulative and worst main-thread block: the spawn initiation (uv_spawn →
+  // posix_spawn) for async launches, the whole run for runProcessSync.
   blockMsTotal: number
   blockMsMax: number
 }
@@ -86,7 +86,7 @@ const spawnStatsByCommand = new Map<string, SubprocessSpawnStats>()
 
 /**
  * Record one subprocess spawn from the main process. `blockMs` is how long
- * the synchronous spawn/execFile initiation call held the main thread.
+ * the spawn call held the main thread (until exit for synchronous launches).
  * No-op unless ORCA_MAIN_THREAD_DIAGNOSTICS=1.
  */
 export function recordSubprocessSpawn(
@@ -136,14 +136,20 @@ export function writeMainThreadDiagnosticMarker(marker: string): void {
   )
 }
 
+export type MainThreadChurnProbeOptions = {
+  /** Extra counters folded into each report line, sampled once per window. */
+  extraStats?: () => Record<string, unknown>
+}
+
 /**
  * Long-running main-process jank probe for benchmarks and field diagnosis of
  * issue #7576. Every 5s emits one `[main-thread] {json}` stderr line with the
- * window's worst event-loop stall, stall counts over 50/250ms, and drained
- * subprocess spawn stats. Unlike the startup stall probe this never stops:
- * the churn it measures (git status polling, updater retries) is steady-state.
+ * window's worst event-loop stall, stall counts over 50/250ms, drained subprocess
+ * spawn stats, and any counters the caller contributes. Unlike the startup stall
+ * probe this never stops: the churn it measures (git status polling, updater
+ * retries) is steady-state.
  */
-export function startMainThreadChurnProbe(): void {
+export function startMainThreadChurnProbe(options: MainThreadChurnProbeOptions = {}): void {
   if (!isMainThreadDiagnosticsEnabled()) {
     return
   }
@@ -176,7 +182,8 @@ export function startMainThreadChurnProbe(): void {
       gapsOver50Ms,
       gapsOver250Ms,
       spawnCount: Object.values(spawns).reduce((sum, s) => sum + s.count, 0),
-      spawns
+      spawns,
+      ...options.extraStats?.()
     }
     windowMaxGapMs = 0
     gapsOver50Ms = 0

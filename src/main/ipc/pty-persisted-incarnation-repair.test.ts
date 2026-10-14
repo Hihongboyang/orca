@@ -1,9 +1,12 @@
+import { withDurableRuntimeStore } from '../runtime/runtime-durable-store-fixture'
 import { describe, expect, it, vi } from 'vitest'
 import { statSyncMock } from './pty-ipc-mock-registry'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
-import { TerminalSessionOwnerUnverifiedError } from '../daemon/daemon-errors'
+import { SessionNotFoundError, TerminalSessionOwnerUnverifiedError } from '../daemon/daemon-errors'
 import { makePaneKey } from '../../shared/stable-pane-id'
-import { registerPtyHandlers, clearProviderPtyState, setLocalPtyProvider } from './pty'
+import { registerPtyHandlers } from './pty/register-handlers'
+import { clearProviderPtyState } from './pty/provider/state-cleanup'
+import { setLocalPtyProvider } from './pty/provider/registry'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -174,8 +177,7 @@ describe('registerPtyHandlers', () => {
           ptyId: 'pty-persisted-owner',
           incarnationId: 'inc-stale-owner'
         }
-      }),
-      undefined
+      })
     )
     expect(
       mainWindow.webContents.send.mock.calls.filter(([channel]) => channel === 'pty:spawned')
@@ -230,7 +232,7 @@ describe('registerPtyHandlers', () => {
       const providerSpawn = vi.fn(
         async (options: { attachOnly?: boolean; command?: string; sessionId?: string }) => {
           if (options.attachOnly) {
-            throw new Error('Session not found: pty-dead-persisted-owner')
+            throw new SessionNotFoundError('pty-dead-persisted-owner')
           }
           return { id: 'pty-fresh-recovery', incarnationId: 'inc-fresh-recovery' }
         }
@@ -272,7 +274,7 @@ describe('registerPtyHandlers', () => {
         },
         terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-dead-persisted-owner' }
       }
-      const store = {
+      const store = withDurableRuntimeStore({
         getWorkspaceSession: vi.fn(() => session),
         setWorkspaceSession: vi.fn((next) => {
           session = next
@@ -293,7 +295,7 @@ describe('registerPtyHandlers', () => {
         ]),
         getProjectGroups: vi.fn(() => []),
         getRepos: vi.fn(() => [])
-      }
+      })
       const runtime = {
         setPtyController: vi.fn(),
         resolveTerminalPane: vi.fn(() => {
@@ -352,8 +354,9 @@ describe('registerPtyHandlers', () => {
         expect(store.setWorkspaceSession).toHaveBeenCalledOnce()
         expect(runtime.onPtyExit).toHaveBeenCalledWith(
           'pty-dead-persisted-owner',
-          0,
-          'inc-dead-persisted-owner'
+          -1,
+          'inc-dead-persisted-owner',
+          { hostExitConfirmed: true }
         )
         return
       }
@@ -376,8 +379,9 @@ describe('registerPtyHandlers', () => {
       expect(store.flushOrThrow).toHaveBeenCalledOnce()
       expect(runtime.onPtyExit).toHaveBeenCalledWith(
         'pty-dead-persisted-owner',
-        0,
-        'inc-dead-persisted-owner'
+        -1,
+        'inc-dead-persisted-owner',
+        { hostExitConfirmed: true }
       )
     }
   )
@@ -432,7 +436,7 @@ describe('registerPtyHandlers', () => {
       },
       terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-unproven-owner' }
     }
-    const store = {
+    const store = withDurableRuntimeStore({
       getWorkspaceSession: vi.fn(() => session),
       setWorkspaceSession: vi.fn((next) => {
         session = next
@@ -443,7 +447,7 @@ describe('registerPtyHandlers', () => {
       getFolderWorkspaces: vi.fn(() => []),
       getProjectGroups: vi.fn(() => []),
       getRepos: vi.fn(() => [])
-    }
+    })
     const runtime = {
       setPtyController: vi.fn(),
       resolveTerminalPane: vi.fn(() => {

@@ -1,14 +1,16 @@
 import type { WorktreeSlice } from '../../worktree-helpers'
+import { parseExecutionHostId } from '../../../../../../shared/execution-host'
 import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
-import { callRuntimeRpc, getActiveRuntimeTarget } from '../../../../runtime/runtime-rpc-client'
+import { callRuntimeRpc } from '../../../../runtime/runtime-rpc-client'
+import { runtimeTargetForWorkspaceOwner } from '@/lib/resolve-owner'
 import { toRuntimeWorktreeSelector } from '../../../../runtime/runtime-worktree-selector'
 import { preservedBranchCleanupKey } from '../../../../../../shared/preserved-branch-cleanup'
 import type { ForceDeleteWorktreeBranchResult } from '../../../../../../shared/worktree/create-types'
 import type { PreservedBranchCleanup } from '../../../../../../shared/preserved-branch-cleanup'
 import { preservedBranchRuntimeTargetByCleanupKey } from './preserved-branch-cleanup-target'
-import { settingsForWorktreeOwner } from '../listing/worktree-owner-settings'
+import { WORKTREE_REMOVAL_AMBIGUOUS_ERROR } from '../listing/worktree-slice-constants'
 
 export function createForceDeletePreservedBranch(
   _set: WorktreeSliceSet,
@@ -58,14 +60,23 @@ export function createForceDeletePreservedBranch(
       const cleanupHostId = options?.hostId ?? retainedTarget?.cleanup.hostId
       // Why: the removed row no longer records its nested HUB owner, so retain the deletion-time route.
       const target =
-        retainedTarget?.target ??
-        getActiveRuntimeTarget(settingsForWorktreeOwner(get(), worktreeId))
+        retainedTarget?.target ?? runtimeTargetForWorkspaceOwner(get(), { workspaceId: worktreeId })
+      if (!target) {
+        throw new Error(WORKTREE_REMOVAL_AMBIGUOUS_ERROR)
+      }
+      const parsedCleanupHost = parseExecutionHostId(cleanupHostId)
+      const effectiveHostId =
+        target.kind === 'environment' &&
+        parsedCleanupHost?.kind === 'runtime' &&
+        parsedCleanupHost.environmentId === target.environmentId
+          ? undefined
+          : cleanupHostId
       const result = await (target.kind === 'local'
         ? window.api.worktrees.forceDeletePreservedBranch({
             worktreeId,
             branchName,
             expectedHead,
-            ...(cleanupHostId ? { hostId: cleanupHostId } : {})
+            ...(effectiveHostId ? { hostId: effectiveHostId } : {})
           })
         : callRuntimeRpc<ForceDeleteWorktreeBranchResult>(
             target,
@@ -74,19 +85,10 @@ export function createForceDeletePreservedBranch(
               worktree: toRuntimeWorktreeSelector(worktreeId),
               branchName,
               expectedHead,
-              ...(cleanupHostId ? { hostId: cleanupHostId } : {})
+              ...(effectiveHostId ? { hostId: effectiveHostId } : {})
             },
             { timeoutMs: 15_000 }
           ))
-      if (options?.suppressToast !== true) {
-        toast.success(translate('auto.store.slices.worktrees.19db0085fb', 'Local branch deleted'), {
-          description: translate(
-            'auto.store.slices.worktrees.5a58e03a26',
-            'Deleted "{{value0}}".',
-            { value0: branchName }
-          )
-        })
-      }
       preservedBranchRuntimeTargetByCleanupKey.delete(
         retainedTarget ? preservedBranchCleanupKey(retainedTarget.cleanup) : requestedCleanupKey
       )

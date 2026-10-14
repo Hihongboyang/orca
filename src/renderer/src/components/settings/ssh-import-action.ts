@@ -15,12 +15,11 @@ export async function importSshConfigAndReport(): Promise<number> {
   } else {
     toast.success(
       translate(
-        'auto.components.settings.SshPane.f8050f6307',
-        'Synced {{value0}} server{{value1}}',
-        {
-          value0: result.targets.length,
-          value1: result.targets.length > 1 ? 's' : ''
-        }
+        result.targets.length === 1
+          ? 'auto.components.settings.SshPane.syncedServerSingular'
+          : 'auto.components.settings.SshPane.syncedServerPlural',
+        result.targets.length === 1 ? 'Synced {{count}} server' : 'Synced {{count}} servers',
+        { count: result.targets.length }
       )
     )
   }

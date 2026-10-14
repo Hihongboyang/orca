@@ -3,20 +3,20 @@
 // and the sentinel wait that turns a wsl.exe child's stdio into a
 // MultiplexerTransport. Kept separate from the manager so the state machine
 // stays readable. See docs/agent-status-over-wsl.md (STA-1515).
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { getAppEnvironment } from '../../shared/app-environment'
+import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 
 import type { MultiplexerTransport } from '../ssh/ssh-channel-multiplexer'
 import {
-  decodeWslText,
   MAX_STARTUP_BUFFER_BYTES,
   type waitForWslRelaySentinel,
   type WslRelayStartupFailure
 } from './wsl-hook-relay-sentinel'
 import { addOrcaWslInteropEnv } from '../pty/wsl-orca-env'
 import { runWslProcess } from '../wsl/wsl-runner'
+import { resolveWslInteropSpawnCwd } from '../wsl-interop-spawn-directory'
 import {
   WSL_HOOK_RELAY_BUNDLE_NAME,
   WSL_HOOK_RELAY_DIR,
@@ -32,24 +32,7 @@ const INSTALL_TIMEOUT_MS = 30_000
 export type WslHookRelayBundle = { jsPath: string; version: string }
 
 export function resolveWslHookRelayBundle(): WslHookRelayBundle | null {
-  // Mirrors getLocalRelayCandidates in ssh-relay-deploy: env override for
-  // tests/dev, then packaged extraResources, then dev out/ paths.
-  const candidates: string[] = []
-  if (process.env.ORCA_RELAY_PATH) {
-    candidates.push(join(process.env.ORCA_RELAY_PATH, 'wsl'))
-  }
-  if (process.resourcesPath) {
-    candidates.push(join(process.resourcesPath, 'relay', 'wsl'))
-    candidates.push(join(process.resourcesPath, 'app.asar.unpacked', 'out', 'relay', 'wsl'))
-  }
-  try {
-    const appPath = getAppEnvironment().getAppPath()
-    candidates.push(join(appPath, 'resources', 'relay', 'wsl'))
-    candidates.push(join(appPath, 'out', 'relay', 'wsl'))
-  } catch {
-    // app not ready in some test contexts — env/resources candidates suffice.
-  }
-  for (const dir of candidates) {
+  for (const dir of relayBundleCandidates('wsl')) {
     const jsPath = join(dir, WSL_HOOK_RELAY_BUNDLE_NAME)
     const versionPath = join(dir, WSL_HOOK_RELAY_VERSION_FILE)
     if (existsSync(jsPath) && existsSync(versionPath)) {
@@ -137,38 +120,11 @@ export function spawnWslRelayProcess(
   return spawn('wsl.exe', ['-d', distro, '--exec', 'sh', '-c', command], {
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true
-  })
-}
-
-/** True when the distro shows in `wsl --list --running`. Listing does NOT
- *  boot anything — unlike `wsl -d`, which starts a stopped distro. The
- *  restart timer must check this so relay recovery never resurrects a VM the
- *  user shut down with `wsl --shutdown`. Fails CLOSED (false) on probe
- *  errors: booting a VM the user shut down is worse than a skipped restart
- *  (the next WSL PTY spawn re-ensures), and a wsl.exe too wedged to list
- *  distros would not have launched the relay anyway. */
-export function isWslDistroRunning(distro: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    execFile(
-      'wsl.exe',
-      ['--list', '--running', '--quiet'],
-      // Why: WSL_UTF8=1 forces UTF-8 output; without it wsl.exe emits
-      // UTF-16LE that reads as NUL-riddled text.
-      { env: { ...process.env, WSL_UTF8: '1' }, timeout: 10_000, windowsHide: true },
-      (err, stdout) => {
-        if (err) {
-          resolve(false)
-          return
-        }
-        const wanted = distro.trim().toLowerCase()
-        const running = decodeWslText(String(stdout))
-          .split(/\r?\n/)
-          .map((line) => line.trim().toLowerCase())
-          .filter(Boolean)
-        resolve(running.includes(wanted))
-      }
-    )
+    windowsHide: true,
+    // Why explicit (#16463): the guest path is in `command`, so the Windows cwd
+    // only decides whether CreateProcessW succeeds -- and an inherited one is a
+    // worktree the user can delete, which kills every later relay launch.
+    cwd: resolveWslInteropSpawnCwd()
   })
 }
 

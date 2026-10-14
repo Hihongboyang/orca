@@ -45,7 +45,7 @@ describe('fetchWorktrees', () => {
     clearHugeRepoWarningDismissalsForTests()
   })
 
-  it('fetches worktrees from the active remote runtime environment', async () => {
+  it('stamps ownerless worktrees from an older active remote runtime before repos hydrate', async () => {
     const store = createTestStore()
     const remote = makeWorktree({
       id: 'repo1::/remote/wt1',
@@ -63,7 +63,15 @@ describe('fetchWorktrees', () => {
 
     await store.getState().fetchWorktrees('repo1')
 
-    expect(store.getState().worktreesByRepo.repo1).toEqual([remote])
+    const expected = {
+      ...remote,
+      hostId: 'runtime:env-1',
+      runtimeOwnerEnvironmentId: 'env-1'
+    }
+    expect(store.getState().worktreesByRepo.repo1).toEqual([expected])
+    expect(store.getState().detectedWorktreesByRepo.repo1?.worktrees).toEqual([
+      expect.objectContaining(expected)
+    ])
     expect(runtimeEnvironmentCall).toHaveBeenCalledWith({
       selector: 'env-1',
       method: 'worktree.detectedList',
@@ -581,12 +589,26 @@ describe('fetchWorktrees', () => {
 
     await store.getState().fetchWorktrees('repo1')
 
-    expect(store.getState().worktreesByRepo.repo1).toEqual([remote])
+    expect(store.getState().worktreesByRepo.repo1).toEqual([
+      {
+        ...remote,
+        hostId: 'runtime:env-1',
+        runtimeOwnerEnvironmentId: 'env-1'
+      }
+    ])
     expect(store.getState().detectedWorktreesByRepo.repo1).toMatchObject({
       repoId: 'repo1',
       authoritative: true,
       source: 'session-fallback',
-      worktrees: [{ id: remote.id, ownership: 'orca-managed', visible: true }]
+      worktrees: [
+        {
+          id: remote.id,
+          ownership: 'orca-managed',
+          visible: true,
+          hostId: 'runtime:env-1',
+          runtimeOwnerEnvironmentId: 'env-1'
+        }
+      ]
     })
     expect(runtimeEnvironmentCall).toHaveBeenCalledWith({
       selector: 'env-1',
@@ -611,6 +633,10 @@ describe('fetchWorktrees', () => {
         { id: 'repo2', path: '/r2', displayName: 'R2', badgeColor: '#000', addedAt: 0 }
       ]
     } as Partial<AppState>)
+    // Ingest stamps server rows; the listing follows the row's host.
+    store.setState({
+      repos: store.getState().repos.map((repo) => ({ ...repo, executionHostId: 'runtime:env-1' }))
+    })
     // Why: a mobile-scope device token is denied non-allowlisted runtime RPCs.
     runtimeEnvironmentCall.mockResolvedValue({
       id: 'rpc-1',

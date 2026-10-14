@@ -1,11 +1,14 @@
-import type { SshConnection } from './ssh-connection'
+import type { RemoteInstallTransport } from './remote-install-transport'
 import {
   getProcessOutputFields,
   iterateProcessOutputLines
 } from '../../shared/process-output-field-scanner'
 import { parseUnameToRelayPlatform, type RelayPlatform } from './relay-protocol'
-import { execCommand } from './ssh-relay-deploy-helpers'
-import { isUnconfirmedSshCommandTermination } from './ssh-relay-exec-command'
+import {
+  execCommand,
+  isSshExecTimeout,
+  isUnconfirmedSshCommandTermination
+} from './ssh-relay-exec-command'
 import { isSshSessionLimitError } from './ssh-session-limit-error'
 import { getRemoteHostPlatform, type RemoteHostPlatform } from './ssh-remote-platform'
 import { powerShellCommand } from './ssh-remote-powershell'
@@ -14,7 +17,6 @@ const PLATFORM_PROBE_MARKER = '__ORCA_REMOTE_PLATFORM__'
 const MAX_UNAME_FIELD_CHARS = 64
 const MAX_THROWN_OUTPUT_CHARS = 200
 const MAX_LOGGED_OUTPUT_CHARS = 1000
-const EXEC_TIMEOUT_MESSAGE = /timed out after \d+s$/u
 
 type PlatformProbeOutcome =
   | { kind: 'detected'; platform: RelayPlatform }
@@ -23,7 +25,7 @@ type PlatformProbeOutcome =
   | { kind: 'failed'; error: unknown }
 
 export async function detectRemoteHostPlatform(
-  conn: SshConnection,
+  conn: RemoteInstallTransport,
   options?: { signal?: AbortSignal }
 ): Promise<RemoteHostPlatform | null> {
   const uname = await detectUnamePlatform(conn, options?.signal)
@@ -39,7 +41,7 @@ export async function detectRemoteHostPlatform(
   }
   // Why: only the PowerShell probe can settle a uname the parser cannot map
   // (Cygwin, say), so a refused or timed-out channel leaves it unsettled.
-  const windowsProbeNeverRan = windows.kind === 'failed' && isTransportShapedError(windows.error)
+  const windowsProbeNeverRan = windows.kind === 'failed' && isTransportFailure(windows.error)
   if ((uname.kind === 'unsupported' && !windowsProbeNeverRan) || windows.kind === 'unsupported') {
     const reported = uname.kind === 'unsupported' ? uname.uname : probeUname(windows)
     console.warn(`[ssh-relay] Remote reported an unsupported platform: ${reported}`)
@@ -67,7 +69,7 @@ function undetectedPlatformError(
   windows: PlatformProbeOutcome
 ): Error {
   for (const outcome of [uname, windows]) {
-    if (outcome.kind === 'failed' && isTransportShapedError(outcome.error)) {
+    if (outcome.kind === 'failed' && isTransportFailure(outcome.error)) {
       return wrapProbeError(outcome.error)
     }
   }
@@ -85,11 +87,11 @@ function undetectedPlatformError(
 
 // Why: a refused or timed-out channel explains the failure better than the
 // other probe's mundane non-zero exit (e.g. "sh: not found" on Windows).
-function isTransportShapedError(error: unknown): boolean {
+function isTransportFailure(error: unknown): boolean {
   return (
     isSshSessionLimitError(error) ||
     isUnconfirmedSshCommandTermination(error) ||
-    (error instanceof Error && EXEC_TIMEOUT_MESSAGE.test(error.message))
+    isSshExecTimeout(error)
   )
 }
 
@@ -124,7 +126,7 @@ function summarizeProbeOutput(output: string, maxChars: number): string {
 }
 
 async function detectUnamePlatform(
-  conn: SshConnection,
+  conn: RemoteInstallTransport,
   signal?: AbortSignal
 ): Promise<PlatformProbeOutcome> {
   try {
@@ -141,7 +143,7 @@ async function detectUnamePlatform(
 }
 
 async function detectWindowsPlatform(
-  conn: SshConnection,
+  conn: RemoteInstallTransport,
   signal?: AbortSignal
 ): Promise<PlatformProbeOutcome> {
   try {

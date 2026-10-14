@@ -1,3 +1,25 @@
+import { execFileSync } from 'node:child_process'
+
+/** Written once a bundle is fully built; its absence is what marks a build still in flight. */
+export const DEV_BUNDLE_MARKER_FILENAME = 'orca-dev-electron-app.json'
+
+export function getDevBundleProcessTable(execFile = execFileSync) {
+  // Not pgrep: macOS pgrep has no -a (a Linux procps extension) and silently prints bare PIDs,
+  // which reads as "nothing is running" and deletes a live bundle. -ww keeps the command column
+  // from being truncated. The raw text is searched directly; see isDevBundleInUse for why it is
+  // deliberately not parsed into paths.
+  try {
+    return execFile('/bin/ps', ['-Awwo', 'command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000
+    })
+  } catch {
+    // Treating a failure as "nothing live" would risk deleting a running bundle, so skip pruning.
+    return null
+  }
+}
+
 // Why this module exists: `out/electron-dev` accumulates one ~270MB copy of Electron.app per
 // (branch title x Electron version x bundle layout). The runner only ever clears the directory it is
 // about to rebuild, so siblings from renamed branches and past upgrades are never reclaimed --
@@ -36,10 +58,19 @@ export function isDevBundleInUse(dir, processTable) {
   return processTable.includes(`${dir}/`) || processTable.includes(`${alternate}/`)
 }
 
-export function selectStaleDevBundleDirs({ bundles, currentDir, processTable, nowMs }) {
+export function selectStaleDevBundleDirs({
+  bundles,
+  currentDir,
+  processTable,
+  nowMs,
+  minAgeMs = 0
+}) {
   return bundles
     .filter(({ dir, hasMarker, mtimeMs }) => {
       if (dir === currentDir || isDevBundleInUse(dir, processTable)) {
+        return false
+      }
+      if (minAgeMs > 0 && nowMs - mtimeMs < minAgeMs) {
         return false
       }
       const buildInFlight = !hasMarker && nowMs - mtimeMs < IN_PROGRESS_WINDOW_MS

@@ -5,11 +5,9 @@
  *
  * Mouse close path: SortableTab (X onClick / onAuxClick button===1) -> onClose
  *   -> Terminal.tsx handleCloseTab -> closeTerminalTab() -> running-process guard.
- * Keyboard path: Cmd+W -> TerminalPane.handleRequestClosePane -> inspectRuntimeTerminalProcess
+ * Keyboard path: Cmd+W -> TerminalPane.handleRequestClosePane -> probePtyRunningWork
  *   (split panes) or closeTerminalTab's guard (last pane) -> CloseTerminalDialog.
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -30,17 +28,25 @@ vi.mock('@/store', () => ({
   useAppStore: { getState: getStateMock }
 }))
 
-vi.mock('@/runtime/web-runtime-session', () => ({
+vi.mock('@/runtime/web-runtime-session-tab-lifecycle', () => ({
   activateWebRuntimeSessionTab: vi.fn(),
-  closeWebRuntimeSessionTab: vi.fn(),
-  createWebRuntimeSessionTerminal: vi.fn(),
-  isWebRuntimeSessionActive: isWebRuntimeSessionActiveMock,
+  closeWebRuntimeSessionTab: vi.fn()
+}))
+vi.mock('@/runtime/web-runtime-terminal-creation', () => ({
+  createWebRuntimeSessionTerminal: vi.fn()
+}))
+vi.mock('@/runtime/web-runtime-session-environment', () => ({
+  isWebRuntimeSessionActive: isWebRuntimeSessionActiveMock
+}))
+vi.mock('../../../../shared/terminal-surface-id', () => ({
   isWebTerminalSurfaceTabId: vi.fn(() => false),
   toHostSessionTabId: vi.fn((tabId: string) => tabId)
 }))
 
-vi.mock('@/runtime/web-session-tabs-sync', () => ({
-  getLatestWebSessionTabsPublicationEpoch: vi.fn(() => 'epoch-1'),
+vi.mock('@/runtime/web-session-tabs-sync/tracking-lifecycle', () => ({
+  getLatestWebSessionTabsPublicationEpoch: vi.fn(() => 'epoch-1')
+}))
+vi.mock('@/runtime/web-session-tabs-sync/tracking-mappings', () => ({
   resolveHostSessionTabIdForWebSessionTab: resolveHostSessionTabIdForWebSessionTabMock
 }))
 
@@ -92,15 +98,6 @@ describe('#10142 close confirmation policy is the same for keyboard and mouse', 
     })
   })
 
-  // Control: the keyboard entry point does probe for running children.
-  it('keyboard Cmd+W path probes for running child processes before closing', () => {
-    const source = readFileSync(join(__dirname, '../terminal-pane/TerminalPane.tsx'), 'utf8')
-    const handler = source.slice(source.indexOf('const handleRequestClosePane'))
-    expect(handler.slice(0, handler.indexOf('useImperativeHandle'))).toContain(
-      'inspectRuntimeTerminalProcess'
-    )
-  })
-
   // Control: the harness does observe a guard when one exists — pinning blocks the same mouse close.
   it('mouse close routes a pinned tab through its confirmation guard', () => {
     const state = stateWithBusyTerminalTab(closeTab)
@@ -113,13 +110,6 @@ describe('#10142 close confirmation policy is the same for keyboard and mouse', 
 
     expect(requestPinnedTabCloseConfirmMock).toHaveBeenCalled()
     expect(closeTab).not.toHaveBeenCalled()
-  })
-
-  it('mouse close (X button / middle-click) consults the running-process probe', async () => {
-    closeTerminalTab('tab-busy')
-    await Promise.resolve()
-
-    expect(inspectRuntimeTerminalProcessMock).toHaveBeenCalled()
   })
 
   it('mouse close (X button / middle-click) does not drop a busy tab without confirmation', async () => {

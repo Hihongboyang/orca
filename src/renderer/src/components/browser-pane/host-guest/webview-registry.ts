@@ -1,6 +1,16 @@
 import { clearLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
-import { removeBrowserPageViewport } from './browser-page-viewport'
+import {
+  clearBrowserPageViewportPresetSize,
+  removeBrowserPageViewport
+} from './browser-page-viewport'
 import { forgetExplicitBrowserPageZoomLevel } from './browser-page-zoom'
+import {
+  acquireWebviewsDragPassthrough,
+  isWebviewDragPassthroughActive,
+  registerWebviewDragPassthroughSurface
+} from './webview-drag-passthrough'
+
+export { acquireWebviewsDragPassthrough } from './webview-drag-passthrough'
 
 // Why: the webview registry is shared coordination state between BrowserPane
 // (React component) and store-layer cleanup helpers (shutdownWorktreeBrowsers,
@@ -18,7 +28,6 @@ export type BrowserWebviewMemoryProfile = {
 const DRAG_LISTENER_KEY = '__orcaBrowserPaneDragListeners'
 let dragListenersAttached = false
 let nativeDragPassthroughRelease: (() => void) | null = null
-const dragPassthroughTokens = new Set<symbol>()
 const dragPassthroughPreviousPointerEvents = new Map<Electron.WebviewTag, string>()
 const rendererRecoveryPendingPageIds = new Set<string>()
 const webviewLifecycleListeners = new Map<
@@ -35,6 +44,8 @@ type DragListenerRegistry = {
   dragstart: () => void
   dragend: () => void
   drop: () => void
+  pointerdown: () => void
+  pointermove: () => void
 }
 
 function getListenerHost(): (Window & { [DRAG_LISTENER_KEY]?: DragListenerRegistry }) | null {
@@ -53,6 +64,8 @@ function removeDragListeners(): void {
   window.removeEventListener('dragstart', existingListeners.dragstart, true)
   window.removeEventListener('dragend', existingListeners.dragend, true)
   window.removeEventListener('drop', existingListeners.drop, true)
+  window.removeEventListener('pointerdown', existingListeners.pointerdown, true)
+  window.removeEventListener('pointermove', existingListeners.pointermove, true)
   delete listenerHost[DRAG_LISTENER_KEY]
   dragListenersAttached = false
   nativeDragPassthroughRelease?.()
@@ -72,13 +85,19 @@ function ensureDragListeners(): void {
   const dragstart = (): void => setWebviewsDragPassthrough(true)
   const dragend = (): void => setWebviewsDragPassthrough(false)
   const drop = (): void => setWebviewsDragPassthrough(false)
+  // Why: a cancelled dragstart never starts a drag, so no dragend or drop follows and every webview
+  // would stay click-through. A live native drag delivers no pointer events, so one proves it is over.
+  const pointerdown = (): void => setWebviewsDragPassthrough(false)
+  const pointermove = (): void => setWebviewsDragPassthrough(false)
 
   window.addEventListener('dragstart', dragstart, true)
   window.addEventListener('dragend', dragend, true)
   window.addEventListener('drop', drop, true)
+  window.addEventListener('pointerdown', pointerdown, true)
+  window.addEventListener('pointermove', pointermove, true)
   // Why: only live webviews need drag passthrough listeners; removing them
   // when the registry empties keeps browserless sessions free of global hooks.
-  listenerHost[DRAG_LISTENER_KEY] = { dragstart, dragend, drop }
+  listenerHost[DRAG_LISTENER_KEY] = { dragstart, dragend, drop, pointerdown, pointermove }
   dragListenersAttached = true
 }
 
@@ -93,8 +112,7 @@ export function getBrowserWebviewMemoryProfile(): BrowserWebviewMemoryProfile {
   }
 }
 
-function applyWebviewsDragPassthrough(): void {
-  const passthrough = dragPassthroughTokens.size > 0
+function applyWebviewsDragPassthrough(passthrough: boolean): void {
   for (const webview of webviewRegistry.values()) {
     if (passthrough) {
       if (!dragPassthroughPreviousPointerEvents.has(webview)) {
@@ -112,24 +130,7 @@ function applyWebviewsDragPassthrough(): void {
   }
 }
 
-export function acquireWebviewsDragPassthrough(): () => void {
-  // Why: renderer-owned pointer drags (dnd-kit tab drags, terminal pane
-  // reorders) do not emit HTML dragstart/dragend, but Electron webviews can
-  // still steal the pointer stream unless they are temporarily transparent.
-  const token = Symbol('webview-drag-passthrough')
-  let released = false
-  dragPassthroughTokens.add(token)
-  applyWebviewsDragPassthrough()
-
-  return () => {
-    if (released) {
-      return
-    }
-    released = true
-    dragPassthroughTokens.delete(token)
-    applyWebviewsDragPassthrough()
-  }
-}
+registerWebviewDragPassthroughSurface(applyWebviewsDragPassthrough)
 
 export function setWebviewsDragPassthrough(passthrough: boolean): void {
   if (passthrough) {
@@ -144,7 +145,7 @@ export function setWebviewsDragPassthrough(passthrough: boolean): void {
 }
 
 function applyCurrentDragPassthroughToWebview(webview: Electron.WebviewTag): void {
-  if (dragPassthroughTokens.size === 0) {
+  if (!isWebviewDragPassthroughActive()) {
     return
   }
   if (!dragPassthroughPreviousPointerEvents.has(webview)) {
@@ -262,6 +263,7 @@ function removePersistentWebview(
     // Why: the viewport can outlive a missing webview entry; tear it down on
     // explicit close paths so overlay slots do not leak parked shells.
     if (!preserveViewport) {
+      clearBrowserPageViewportPresetSize(browserTabId)
       removeBrowserPageViewport(browserTabId)
     }
     registeredWebContentsIds.delete(browserTabId)
@@ -275,6 +277,7 @@ function removePersistentWebview(
   webview.remove()
   unregisterPersistentWebview(browserTabId)
   if (!preserveViewport) {
+    clearBrowserPageViewportPresetSize(browserTabId)
     removeBrowserPageViewport(browserTabId)
   }
   registeredWebContentsIds.delete(browserTabId)

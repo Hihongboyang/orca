@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
+import { withDurableRuntimeStore } from '../runtime/runtime-durable-store-fixture'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
+import { SessionNotFoundError } from '../daemon/daemon-errors'
 import { makePaneKey } from '../../shared/stable-pane-id'
-import { registerPtyHandlers, setLocalPtyProvider } from './pty'
+import { registerPtyHandlers } from './pty/register-handlers'
+import { setLocalPtyProvider } from './pty/provider/registry'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -59,7 +62,7 @@ describe('registerPtyHandlers', () => {
     const providerSpawn = vi.fn(
       async (options: { attachOnly?: boolean; command?: string; sessionId?: string }) => {
         if (options.attachOnly) {
-          throw new Error('Session not found: pty-proven-absent-owner')
+          throw new SessionNotFoundError('pty-proven-absent-owner')
         }
         return { id: 'pty-fresh-proven', incarnationId: 'inc-fresh-proven' }
       }
@@ -101,7 +104,7 @@ describe('registerPtyHandlers', () => {
       },
       terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-proven-absent-owner' }
     }
-    const store = {
+    const store = withDurableRuntimeStore({
       getWorkspaceSession: vi.fn(() => session),
       setWorkspaceSession: vi.fn((next) => {
         session = next
@@ -112,7 +115,7 @@ describe('registerPtyHandlers', () => {
       getFolderWorkspaces: vi.fn(() => []),
       getProjectGroups: vi.fn(() => []),
       getRepos: vi.fn(() => [])
-    }
+    })
     const runtime = {
       setPtyController: vi.fn(),
       resolveTerminalPane: vi.fn(() => {
@@ -161,10 +164,13 @@ describe('registerPtyHandlers', () => {
     expect(providerSpawn.mock.calls[1]?.[0]).toMatchObject({
       command: 'codex resume proven-absent-session'
     })
+    // The registry that owns the PTY answered, so this exit is confirmed — but the code stays the
+    // -1 sentinel; a synthesized zero would be indistinguishable from a clean shell exit.
     expect(runtime.onPtyExit).toHaveBeenCalledWith(
       'pty-proven-absent-owner',
-      0,
-      'inc-proven-absent-owner'
+      -1,
+      'inc-proven-absent-owner',
+      { hostExitConfirmed: true }
     )
     expect(store.setWorkspaceSession).toHaveBeenCalledOnce()
     expect(store.flushOrThrow).toHaveBeenCalledOnce()
@@ -178,7 +184,7 @@ describe('registerPtyHandlers', () => {
     const providerSpawn = vi.fn(
       async (options: { attachOnly?: boolean; command?: string; sessionId?: string }) => {
         if (options.attachOnly) {
-          throw new Error('Session not found: pty-probe-blip-owner')
+          throw new SessionNotFoundError('pty-probe-blip-owner')
         }
         return { id: 'pty-fresh-probe-blip', incarnationId: 'inc-fresh-probe-blip' }
       }
@@ -222,7 +228,7 @@ describe('registerPtyHandlers', () => {
       },
       terminalPtyIncarnationsByPaneKey: { [paneKey]: 'inc-probe-blip-owner' }
     }
-    const store = {
+    const store = withDurableRuntimeStore({
       getWorkspaceSession: vi.fn(() => session),
       setWorkspaceSession: vi.fn((next) => {
         session = next
@@ -233,7 +239,7 @@ describe('registerPtyHandlers', () => {
       getFolderWorkspaces: vi.fn(() => []),
       getProjectGroups: vi.fn(() => []),
       getRepos: vi.fn(() => [])
-    }
+    })
     const runtime = {
       setPtyController: vi.fn(),
       resolveTerminalPane: vi.fn(() => {
@@ -282,8 +288,9 @@ describe('registerPtyHandlers', () => {
     expect(providerSpawn).toHaveBeenCalledTimes(2)
     expect(runtime.onPtyExit).toHaveBeenCalledWith(
       'pty-probe-blip-owner',
-      0,
-      'inc-probe-blip-owner'
+      -1,
+      'inc-probe-blip-owner',
+      { hostExitConfirmed: true }
     )
   })
   // Why: a parked pane (stopped with keepHistory) leaves the runtime holding the binding while
@@ -299,7 +306,7 @@ describe('registerPtyHandlers', () => {
     const providerSpawn = vi.fn(
       async (options: { attachOnly?: boolean; command?: string; sessionId?: string }) => {
         if (options.attachOnly) {
-          throw new Error('Session not found: pty-already-retired-owner')
+          throw new SessionNotFoundError('pty-already-retired-owner')
         }
         return { id: 'pty-fresh-already-retired', incarnationId: 'inc-fresh-already-retired' }
       }
@@ -345,7 +352,7 @@ describe('registerPtyHandlers', () => {
       },
       terminalPtyIncarnationsByPaneKey: {}
     }
-    const store = {
+    const store = withDurableRuntimeStore({
       getWorkspaceSession: vi.fn(() => session),
       setWorkspaceSession: vi.fn((next) => {
         session = next
@@ -356,7 +363,7 @@ describe('registerPtyHandlers', () => {
       getFolderWorkspaces: vi.fn(() => []),
       getProjectGroups: vi.fn(() => []),
       getRepos: vi.fn(() => [])
-    }
+    })
     let runtimeOwnsPane = true
     const runtime = {
       setPtyController: vi.fn(),
@@ -420,6 +427,8 @@ describe('registerPtyHandlers', () => {
     expect(providerSpawn.mock.calls[1]?.[0]).toMatchObject({
       command: 'codex resume already-retired-session'
     })
-    expect(runtime.onPtyExit).toHaveBeenCalledWith('pty-already-retired-owner', 0, undefined)
+    expect(runtime.onPtyExit).toHaveBeenCalledWith('pty-already-retired-owner', -1, undefined, {
+      hostExitConfirmed: true
+    })
   })
 })

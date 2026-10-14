@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 import { createTestStore, makeLayout, makeTab } from './store-test-helpers'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
@@ -56,7 +57,14 @@ beforeEach(() => {
   reposList.mockReset()
   // Only repos.list is exercised here — the missing projects API makes
   // fetchProjectHostSetupCompatibility fall back to deriving from repos.
-  vi.stubGlobal('window', { api: { repos: { list: reposList } } })
+  vi.stubGlobal('window', {
+    api: {
+      repos: {
+        list: reposList,
+        removeForHost: vi.fn().mockResolvedValue(undefined)
+      }
+    }
+  })
 })
 
 // A repos:changed burst (deleting a project group with contained projects) starts
@@ -74,8 +82,8 @@ describe('repos slice stale-fetch race (#7020)', () => {
     // post-removal state (remoteRepo gone) and resolves first.
     reposList.mockReturnValueOnce(stalePromise).mockResolvedValueOnce([localRepo])
 
-    const stale = store.getState().fetchRepos()
-    const fresh = store.getState().fetchRepos()
+    const stale = store.getState().fetchRepos(catalogOwner(store))
+    const fresh = store.getState().fetchRepos(catalogOwner(store))
     await fresh
     expect(store.getState().repos.map((repo) => repo.id)).toEqual(['local-repo'])
 
@@ -97,12 +105,31 @@ describe('repos slice stale-fetch race (#7020)', () => {
     // the stale one, which must be dropped rather than resurrect remoteRepo.
     reposList.mockReturnValueOnce(stalePromise).mockRejectedValueOnce(new Error('boom'))
 
-    const stale = store.getState().fetchRepos()
-    await store.getState().fetchRepos()
+    const stale = store.getState().fetchRepos(catalogOwner(store))
+    await store.getState().fetchRepos(catalogOwner(store))
 
     resolveStale([localRepo, remoteRepo])
     await stale
     expect(store.getState().repos).toEqual([])
+  })
+
+  it('reapplies an in-flight catalog after the repo is removed', async () => {
+    const { promise: catalog, resolve: resolveCatalog } = Promise.withResolvers<Repo[]>()
+    reposList.mockReturnValueOnce(catalog)
+    const store = createTestStore()
+    store.setState({ repos: [localRepo] })
+
+    const pending = store.getState().fetchRepos(catalogOwner(store))
+    await store
+      .getState()
+      .removeProject(localRepo.id, { hostId: getRepoExecutionHostId(localRepo) })
+    expect(store.getState().repos).toEqual([])
+
+    resolveCatalog([localRepo])
+    await pending
+
+    // Current contract: removal does not claim a catalog generation, so the latest fetch can resurrect it.
+    expect(store.getState().repos).toEqual([{ ...localRepo, executionHostId: 'local' }])
   })
 
   it('waits for the superseding catalog fetch before startup hydration', async () => {
@@ -118,7 +145,7 @@ describe('repos slice stale-fetch race (#7020)', () => {
     const store = createTestStore()
 
     const startup = store.getState().fetchReposForAllHosts({ remoteHosts: 'skip' })
-    const refresh = store.getState().fetchRepos()
+    const refresh = store.getState().fetchRepos(catalogOwner(store))
     resolveStartup([localRepo])
     await startup
 
@@ -157,7 +184,7 @@ describe('repos slice stale-fetch race (#7020)', () => {
 
     await store.getState().fetchReposForAllHosts({ remoteHosts: 'skip' })
     await store.getState().awaitLocalRepoCatalogSettlement()
-    const refresh = store.getState().fetchRepos()
+    const refresh = store.getState().fetchRepos(catalogOwner(store))
     let hydrated = false
     const hydration = (async () => {
       await store.getState().awaitLocalRepoCatalogSettlement()
@@ -183,7 +210,7 @@ describe('repos slice stale-fetch race (#7020)', () => {
     const store = createTestStore()
 
     const startup = store.getState().fetchReposForAllHosts({ remoteHosts: 'skip' })
-    const refresh = store.getState().fetchRepos()
+    const refresh = store.getState().fetchRepos(catalogOwner(store))
     resolveStartup([localRepo])
     await Promise.all([startup, refresh])
 
@@ -197,3 +224,10 @@ describe('repos slice stale-fetch race (#7020)', () => {
     expect(store.getState().pendingReconnectPtyIdByTabId).toEqual({})
   })
 })
+
+// The catalog these tests read is the one the focused host would have shown.
+function catalogOwner(store: {
+  getState: () => { settings: { activeRuntimeEnvironmentId?: string | null } | null }
+}): { runtimeEnvironmentId: string | null } {
+  return { runtimeEnvironmentId: store.getState().settings?.activeRuntimeEnvironmentId ?? null }
+}

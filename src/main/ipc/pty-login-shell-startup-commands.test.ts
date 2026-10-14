@@ -8,8 +8,9 @@ import { posixOnlyIt } from './pty-ipc-test-constants'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { userInfo } from 'node:os'
 import { resetMacosLoginShellPreflightForTests } from '../providers/macos-tcc-login-shell'
-import { registerPtyHandlers } from './pty'
+import { registerPtyHandlers } from './pty/register-handlers'
 import { join } from 'node:path'
+import { POSIX_SHELL_STARTUP_COMMAND_ENV } from '../pty/posix-shell-startup-command'
 // Why resolved rather than hardcoded: the wrapper tree is content-addressed.
 import { getShellReadyWrapperRoot } from '../providers/local-pty-shell-ready-wrapper-root'
 
@@ -191,7 +192,8 @@ describe('registerPtyHandlers', () => {
     try {
       await spawnAndGetCall({ cwd: '/tmp', command: 'echo hello' })
 
-      const { getBashShellReadyRcfileContent } = await import('./pty')
+      const { getBashShellReadyRcfileContent } =
+        await import('../providers/local-pty-shell-ready-bash-rcfile')
       const bashRcContent = getBashShellReadyRcfileContent()
       expect(bashRcContent).toContain('source "$HOME/.bash_profile"')
       expect(bashRcContent).not.toContain('source "$HOME/.bashrc"')
@@ -232,14 +234,14 @@ describe('registerPtyHandlers', () => {
         mockProc.emitData('\x1b]133;A\x07% ')
         await Promise.resolve()
         vi.runAllTimers()
-        expect(mockProc.proc.write).toHaveBeenCalledWith('claude\n')
+        expect(mockProc.proc.write).toHaveBeenCalledWith('claude\r')
       } finally {
         vi.useRealTimers()
       }
     }
   )
   posixOnlyIt(
-    'uses the no-marker wrapper and writes quickly for Codex startup commands',
+    'uses the no-marker wrapper for Codex startup commands without a PTY write',
     async () => {
       vi.useFakeTimers()
       const mockProc = createMockProc()
@@ -256,6 +258,7 @@ describe('registerPtyHandlers', () => {
 
         const [, , options] = spawnMock.mock.calls[0]!
         expect(options.env.ORCA_SHELL_FEATURES).not.toContain('ready')
+        expect(options.env[POSIX_SHELL_STARTUP_COMMAND_ENV]).toBe('codex')
 
         await Promise.resolve()
         vi.advanceTimersByTime(49)
@@ -265,7 +268,7 @@ describe('registerPtyHandlers', () => {
         vi.advanceTimersByTime(1)
         await Promise.resolve()
         vi.runAllTimers()
-        expect(mockProc.proc.write).toHaveBeenCalledWith('codex\n')
+        expect(mockProc.proc.write).not.toHaveBeenCalled()
       } finally {
         vi.useRealTimers()
       }
@@ -288,6 +291,7 @@ describe('registerPtyHandlers', () => {
 
       const [, , options] = spawnMock.mock.calls[0]!
       expect(options.env.ORCA_SHELL_FEATURES).toContain('ready')
+      expect(options.env[POSIX_SHELL_STARTUP_COMMAND_ENV]).toBe("codex 'linked issue context'")
       expect(mockProc.proc.write).not.toHaveBeenCalled()
 
       mockProc.emitData('last login: today\r\n')
@@ -303,7 +307,7 @@ describe('registerPtyHandlers', () => {
 
       vi.advanceTimersByTime(150)
       await Promise.resolve()
-      expect(mockProc.proc.write).toHaveBeenCalledWith("codex 'linked issue context'\n")
+      expect(mockProc.proc.write).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -325,6 +329,9 @@ describe('registerPtyHandlers', () => {
           startupCommandDelivery: 'shell-ready'
         })
 
+        const [, , options] = spawnMock.mock.calls[0]!
+        expect(options.env[POSIX_SHELL_STARTUP_COMMAND_ENV]).toBe("codex 'linked issue context'")
+
         mockProc.emitData('\x1b]777;orca-shell-ready\x07\r\nuser@host % ')
         await Promise.resolve()
         vi.advanceTimersByTime(29)
@@ -333,7 +340,7 @@ describe('registerPtyHandlers', () => {
 
         vi.advanceTimersByTime(1)
         await Promise.resolve()
-        expect(mockProc.proc.write).toHaveBeenCalledWith("codex 'linked issue context'\n")
+        expect(mockProc.proc.write).not.toHaveBeenCalled()
       } finally {
         vi.useRealTimers()
       }
@@ -355,13 +362,16 @@ describe('registerPtyHandlers', () => {
 
       const [, , options] = spawnMock.mock.calls[0]!
       expect(options.env.ORCA_SHELL_FEATURES).toContain('ready')
+      expect(options.env[POSIX_SHELL_STARTUP_COMMAND_ENV]).toBe(
+        "codex --prefill 'linked issue context'"
+      )
       expect(mockProc.proc.write).not.toHaveBeenCalled()
 
       mockProc.emitData('\x1b]777;orca-shell-ready\x07')
       await Promise.resolve()
       vi.runAllTimers()
       await Promise.resolve()
-      expect(mockProc.proc.write).toHaveBeenCalledWith("codex --prefill 'linked issue context'\n")
+      expect(mockProc.proc.write).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -387,7 +397,7 @@ describe('registerPtyHandlers', () => {
       vi.advanceTimersByTime(1)
       await Promise.resolve()
       vi.runAllTimers()
-      expect(mockProc.proc.write).toHaveBeenCalledWith('printf "hello"\n')
+      expect(mockProc.proc.write).toHaveBeenCalledWith('printf "hello"\r')
     } finally {
       vi.useRealTimers()
     }

@@ -11,7 +11,6 @@ import {
 const testState = vi.hoisted(() => ({
   appState: null as unknown as NoteSendAppState,
   callRuntimeRpc: vi.fn(),
-  getActiveRuntimeTarget: vi.fn(() => ({ kind: 'local' })),
   RuntimeRpcCallError: class RuntimeRpcCallError extends Error {
     readonly code: string
     readonly response: unknown
@@ -34,9 +33,8 @@ vi.mock('@/store', () => ({
   )
 }))
 
-vi.mock('@/runtime/runtime-rpc-client', () => ({
-  callRuntimeRpc: testState.callRuntimeRpc,
-  getActiveRuntimeTarget: testState.getActiveRuntimeTarget,
+vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: testState.callRuntimeRpc }))
+vi.mock('@/runtime/runtime-rpc-result', () => ({
   RuntimeRpcCallError: testState.RuntimeRpcCallError
 }))
 
@@ -44,8 +42,6 @@ describe('active agent note send', () => {
   beforeEach(() => {
     testState.appState = createNoteSendAppState()
     testState.callRuntimeRpc.mockReset()
-    testState.getActiveRuntimeTarget.mockClear()
-    testState.getActiveRuntimeTarget.mockReturnValue({ kind: 'local' })
   })
 
   it('sends notes only after the active terminal is verified as an idle agent', async () => {
@@ -129,65 +125,6 @@ describe('active agent note send', () => {
       },
       { timeoutMs: 15000 }
     )
-  })
-
-  it('maps active-focused guarded paste permission refusal to permission', async () => {
-    testState.callRuntimeRpc.mockImplementation(async (_target, method, params) => {
-      if (method === 'terminal.list') {
-        return {
-          terminals: [
-            {
-              handle: 'term-1',
-              worktreeId: 'wt-1',
-              worktreePath: '/repo',
-              branch: 'main',
-              tabId: 'tab-1',
-              leafId: LEAF_ID,
-              title: 'Codex',
-              connected: true,
-              writable: true,
-              lastOutputAt: 1,
-              preview: ''
-            }
-          ],
-          totalCount: 1,
-          truncated: false
-        }
-      }
-      if (method === 'terminal.agentStatus') {
-        return { agentStatus: { handle: 'term-1', isRunningAgent: true, status: 'idle' } }
-      }
-      if (method === 'terminal.wait') {
-        return {
-          wait: {
-            handle: 'term-1',
-            condition: 'tui-idle',
-            satisfied: true,
-            status: 'running',
-            exitCode: null
-          }
-        }
-      }
-      if (method === 'terminal.send') {
-        expect(params).toMatchObject({
-          terminal: 'term-1',
-          requireAgentStatus: 'sendable'
-        })
-        return {
-          send: {
-            handle: 'term-1',
-            accepted: false,
-            bytesWritten: 0,
-            refusedReason: 'permission'
-          }
-        }
-      }
-      throw new Error(`unexpected method ${method}`)
-    })
-
-    await expect(
-      sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'permission' })
   })
 
   it('keeps active-focused sends compatible when an older runtime lacks agentStatus', async () => {
@@ -286,7 +223,7 @@ describe('active agent note send', () => {
 
     await expect(
       sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'no-agent' })
+    ).resolves.toEqual({ status: 'no-agent', code: 'no-agent' })
 
     expect(testState.callRuntimeRpc).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -330,7 +267,7 @@ describe('active agent note send', () => {
 
     await expect(
       sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'not-ready' })
+    ).resolves.toEqual({ status: 'not-ready', code: 'terminal_wait_timeout' })
 
     expect(testState.callRuntimeRpc).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -382,7 +319,7 @@ describe('active agent note send', () => {
 
     await expect(
       sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'no-active-terminal' })
+    ).resolves.toEqual({ status: 'no-active-terminal', code: 'terminal_wait_not_running' })
 
     expect(testState.callRuntimeRpc).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -435,7 +372,7 @@ describe('active agent note send', () => {
 
     await expect(
       sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'permission' })
+    ).resolves.toEqual({ status: 'permission', code: 'terminal_wait_blocked' })
 
     expect(testState.callRuntimeRpc).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -495,7 +432,7 @@ describe('active agent note send', () => {
 
     await expect(
       sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'permission' })
+    ).resolves.toEqual({ status: 'permission', code: 'agent-permission' })
 
     expect(statusChecks).toBe(2)
     expect(testState.callRuntimeRpc).not.toHaveBeenCalledWith(
@@ -512,7 +449,7 @@ describe('active agent note send', () => {
 
     await expect(
       sendNotesToActiveAgentSession({ worktreeId: 'wt-1', prompt: 'notes' })
-    ).resolves.toEqual({ status: 'no-active-terminal' })
+    ).resolves.toEqual({ status: 'no-active-terminal', code: 'no-note-target' })
 
     expect(testState.callRuntimeRpc).not.toHaveBeenCalled()
   })

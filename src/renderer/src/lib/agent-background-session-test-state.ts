@@ -50,6 +50,7 @@ export type AgentBackgroundSessionTestState = {
   closeTab: TestMock
   setTabLayout: TestMock
   clearTabPtyId: TestMock
+  markUnverifiedPtyLoss: TestMock
   setAgentStatus: TestMock
   registerAgentLaunchConfig: TestMock
   clearAgentLaunchConfig: TestMock
@@ -115,6 +116,7 @@ export function createAgentBackgroundSessionTestState(mocks: {
     closeTab: mocks.closeTab,
     setTabLayout: mocks.setTabLayout,
     clearTabPtyId: vi.fn(),
+    markUnverifiedPtyLoss: vi.fn(),
     setAgentStatus: vi.fn(),
     registerAgentLaunchConfig: mocks.registerAgentLaunchConfig,
     clearAgentLaunchConfig: vi.fn()
@@ -187,7 +189,6 @@ export function stubAgentBackgroundSessionWindow(mocks: {
   spawn: TestMock
   write: TestMock
   kill: TestMock
-  markTrusted: TestMock
   runtimeEnvironmentCall: TestMock
   runtimeEnvironmentSubscribe: TestMock
 }): void {
@@ -195,7 +196,6 @@ export function stubAgentBackgroundSessionWindow(mocks: {
     dispatchEvent: mocks.dispatchEvent,
     api: {
       pty: { spawn: mocks.spawn, write: mocks.write, kill: mocks.kill },
-      agentTrust: { markTrusted: mocks.markTrusted },
       runtime: { call: vi.fn() },
       runtimeEnvironments: {
         call: mocks.runtimeEnvironmentCall,
@@ -214,7 +214,6 @@ export function resetAgentBackgroundSessionTestHarness(args: {
   spawn: TestMock
   write: TestMock
   kill: TestMock
-  markTrusted: TestMock
   dispatchEvent: TestMock
   getLaunchPlatform: TestMock
   runtimeCall: TestMock
@@ -269,7 +268,6 @@ export function resetAgentBackgroundSessionTestHarness(args: {
     spawn: args.spawn,
     write: args.write,
     kill: args.kill,
-    markTrusted: args.markTrusted,
     runtimeEnvironmentCall: args.runtimeTransportCall,
     runtimeEnvironmentSubscribe: args.runtimeSubscribe
   })

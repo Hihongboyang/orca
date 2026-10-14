@@ -1,6 +1,8 @@
 import { useCallback } from 'react'
+import { useAppStore } from '@/store'
+import { operationGitContext } from '../listing/operation-target'
 import { translate } from '@/i18n/i18n'
-import { generateRuntimePullRequestFields } from '@/runtime/runtime-git-client'
+import { generateRuntimePullRequestFields } from '@/runtime/runtime-git-generation-client'
 import type { HostedReviewCreationEligibility } from '../../../../../../shared/hosted-review'
 import { normalizeHostedReviewHeadRef } from '../../../../../../shared/hosted-review-refs'
 import { resolveCreateReviewDraftTitle } from '../../create-review-draft-title'
@@ -113,11 +115,14 @@ export function useSourceControlCreatePrIntentReview({
         })
         const target = getCreatePrIntentOperationTarget(token)
         try {
-          const generated = await generateRuntimePullRequestFields(target, {
-            ...fields,
-            provider: eligibility.provider,
-            useTemplate: resolvedPrCreationDefaults.useTemplate
-          })
+          const generated = await generateRuntimePullRequestFields(
+            operationGitContext(target, useAppStore.getState().settings),
+            {
+              ...fields,
+              provider: eligibility.provider,
+              useTemplate: resolvedPrCreationDefaults.useTemplate
+            }
+          )
           if (generated.branchChangedByPreparation) {
             setCreatePrIntentNoticeForWorktree(token.worktreeId, {
               tone: 'muted',
@@ -132,12 +137,7 @@ export function useSourceControlCreatePrIntentReview({
           if (!resolved.ok) {
             setCreatePrIntentNoticeForWorktree(token.worktreeId, {
               tone: 'destructive',
-              message:
-                resolved.error ??
-                translate(
-                  'auto.components.right.sidebar.SourceControl.createPrIntentEmptyGeneratedBody',
-                  'Generated review details did not include a description. Retry Create PR.'
-                )
+              message: resolved.error
             })
             return false
           }

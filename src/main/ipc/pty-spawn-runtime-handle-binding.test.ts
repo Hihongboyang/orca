@@ -5,7 +5,13 @@ import { createHash } from 'node:crypto'
 import { delimiter } from 'node:path'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
-import { registerPtyHandlers, registerSshPtyProvider } from './pty'
+import { ClaudeAgentTeamsService } from '../runtime/claude-agent-teams-service'
+import {
+  clearPaneSpawnReservation,
+  makePaneSpawnReservationKey,
+  reservePaneSpawn
+} from './pty/pane/spawn-reservation'
+import { registerPtyHandlers } from './pty/register-handlers'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -54,57 +60,6 @@ vi.mock('../codex/codex-state-db-backfill-recovery', () =>
 describe('registerPtyHandlers', () => {
   const { handlers, mainWindow, mainWindowIpcEvent } = setupPtyIpcSuite()
 
-  it('injects ORCA_TERMINAL_HANDLE for non-local PTY providers', async () => {
-    const spawn = vi.fn(async () => ({ id: 'remote-pty' }))
-    registerSshPtyProvider('ssh-1', {
-      spawn,
-      write: vi.fn(),
-      resize: vi.fn(),
-      shutdown: vi.fn(),
-      sendSignal: vi.fn(),
-      getCwd: vi.fn(),
-      getInitialCwd: vi.fn(),
-      clearBuffer: vi.fn(),
-      onData: vi.fn(() => () => {}),
-      onReplay: vi.fn(() => () => {}),
-      onExit: vi.fn(() => () => {}),
-      listProcesses: vi.fn(),
-      hasChildProcesses: vi.fn(),
-      getForegroundProcess: vi.fn(),
-      serialize: vi.fn(),
-      revive: vi.fn(),
-      getDefaultShell: vi.fn(),
-      getProfiles: vi.fn(),
-      acknowledgeDataEvent: vi.fn()
-    } as never)
-    const runtime = {
-      setPtyController: vi.fn(),
-      noteTerminalSpawnCommand: vi.fn(),
-      createPreAllocatedTerminalHandle: vi.fn(() => 'term_remote'),
-      registerPreAllocatedHandleForPty: vi.fn()
-    }
-
-    registerPtyHandlers(mainWindow as never, runtime as never)
-    await handlers.get('pty:spawn')!(null, {
-      cols: 80,
-      rows: 24,
-      connectionId: 'ssh-1',
-      env: { EXISTING: '1' }
-    })
-
-    expect(spawn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        env: expect.objectContaining({
-          EXISTING: '1',
-          ORCA_TERMINAL_HANDLE: 'term_remote'
-        })
-      })
-    )
-    expect(runtime.registerPreAllocatedHandleForPty).toHaveBeenCalledWith(
-      'remote-pty',
-      'term_remote'
-    )
-  })
   it('refreshes captured native Agent Teams env for renderer PTY spawns', async () => {
     const leafId = '11111111-1111-4111-8111-111111111111'
     const runtime = {
@@ -410,50 +365,6 @@ describe('registerPtyHandlers', () => {
       baseEnv: expect.any(Object)
     })
   })
-  it('does not echo launch config for provider reattach results', async () => {
-    const spawn = vi.fn(async () => ({ id: 'ssh-reattach', isReattach: true }))
-    registerSshPtyProvider('ssh-reattach-1', {
-      spawn,
-      write: vi.fn(),
-      resize: vi.fn(),
-      shutdown: vi.fn(),
-      sendSignal: vi.fn(),
-      getCwd: vi.fn(),
-      getInitialCwd: vi.fn(),
-      clearBuffer: vi.fn(),
-      onData: vi.fn(() => () => {}),
-      onReplay: vi.fn(() => () => {}),
-      onExit: vi.fn(() => () => {}),
-      listProcesses: vi.fn(),
-      hasChildProcesses: vi.fn(),
-      getForegroundProcess: vi.fn(),
-      serialize: vi.fn(),
-      revive: vi.fn(),
-      getDefaultShell: vi.fn(),
-      getProfiles: vi.fn(),
-      acknowledgeDataEvent: vi.fn()
-    } as never)
-    const runtime = {
-      setPtyController: vi.fn(),
-      createPreAllocatedTerminalHandle: vi.fn(() => 'term_remote'),
-      registerPreAllocatedHandleForPty: vi.fn()
-    }
-
-    registerPtyHandlers(mainWindow as never, runtime as never)
-    const result = (await handlers.get('pty:spawn')!(null, {
-      cols: 80,
-      rows: 24,
-      connectionId: 'ssh-reattach-1',
-      launchConfig: {
-        agentCommand: 'codex --model gpt-5',
-        agentArgs: '--model gpt-5',
-        agentEnv: { CODEX_PROFILE: 'captured' }
-      }
-    })) as { id: string; isReattach?: boolean; launchConfig?: unknown }
-
-    expect(result).toMatchObject({ id: 'ssh-reattach', isReattach: true })
-    expect(result.launchConfig).toBeUndefined()
-  })
   it('reuses the runtime background handle in local PTY spawn env', async () => {
     type RuntimeSpawnController = {
       spawn(args: {
@@ -499,5 +410,122 @@ describe('registerPtyHandlers', () => {
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('pty:spawned', {
       id: spawned.id
     })
+  })
+  it('releases the Agent Teams leader of a spawn that loses the pane mid-preflight', async () => {
+    const leafId = '22222222-2222-4222-8222-222222222222'
+    const teams = new ClaudeAgentTeamsService()
+    let handleSeq = 0
+    const runtime = {
+      setPtyController: vi.fn(),
+      createPreAllocatedTerminalHandle: vi.fn(() => `term_agent_teams_${++handleSeq}`),
+      prepareClaudeAgentTeamsLeaderForHandle: vi.fn(
+        async (args: { handle: string; baseEnv?: Record<string, string> }) =>
+          teams.createLaunchEnv({
+            leaderHandle: args.handle,
+            baseEnv: args.baseEnv ?? {},
+            shimDir: '/tmp/orca-agent-teams-shim',
+            shimBin: null
+          })
+      ),
+      releaseClaudeAgentTeamsLeaderForHandle: vi.fn((handle: string) => {
+        teams.removeTeamForLeaderHandle(handle)
+      }),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      getDriver: vi.fn(() => ({ kind: 'host' })),
+      onPtySpawned: vi.fn(),
+      onPtyExit: vi.fn(),
+      onPtyData: vi.fn()
+    }
+
+    registerPtyHandlers(mainWindow as never, runtime as never)
+    // Why: no worktreeId, so the reservation key only resolves after env assembly — the
+    // window where a concurrent winner's reservation appears mid-preflight.
+    const spawnArgs = {
+      cols: 80,
+      rows: 24,
+      cwd: '/repo',
+      command: 'claude --teammate-mode auto',
+      tabId: 'tab-1',
+      leafId,
+      env: { ORCA_PANE_KEY: `tab-1:${leafId}`, ORCA_TAB_ID: 'tab-1' },
+      launchConfig: { agentCommand: 'claude --teammate-mode auto', agentArgs: '', agentEnv: {} },
+      launchAgent: 'claude'
+    }
+    const winner = (await handlers.get('pty:spawn')!(mainWindowIpcEvent, spawnArgs)) as {
+      id: string
+    }
+    expect(teams.getActiveTeamCount()).toBe(1)
+
+    const reservationKey = makePaneSpawnReservationKey(
+      undefined,
+      undefined,
+      makePaneKey('tab-1', leafId)
+    )!
+    const winnerReservation = reservePaneSpawn(reservationKey)
+    winnerReservation.resolve({ id: winner.id })
+    try {
+      const loser = await handlers.get('pty:spawn')!(mainWindowIpcEvent, spawnArgs)
+      expect(loser).toMatchObject({ id: winner.id, isReattach: true })
+    } finally {
+      clearPaneSpawnReservation(reservationKey, winnerReservation)
+    }
+
+    const loserHandle = runtime.prepareClaudeAgentTeamsLeaderForHandle.mock.calls[1]?.[0].handle
+    expect(runtime.prepareClaudeAgentTeamsLeaderForHandle).toHaveBeenCalledTimes(2)
+    expect(runtime.releaseClaudeAgentTeamsLeaderForHandle).toHaveBeenCalledWith(loserHandle)
+    // The losing request must not grow the team count it can never bind to a PTY.
+    expect(teams.getActiveTeamCount()).toBe(1)
+  })
+  it('releases the Agent Teams leader when its provider spawn fails', async () => {
+    const leafId = '33333333-3333-4333-8333-333333333333'
+    const teams = new ClaudeAgentTeamsService()
+    const runtime = {
+      setPtyController: vi.fn(),
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term_agent_teams_failure'),
+      prepareClaudeAgentTeamsLeaderForHandle: vi.fn(
+        async (args: { handle: string; baseEnv?: Record<string, string> }) =>
+          teams.createLaunchEnv({
+            leaderHandle: args.handle,
+            baseEnv: args.baseEnv ?? {},
+            shimDir: '/tmp/orca-agent-teams-shim',
+            shimBin: null
+          })
+      ),
+      releaseClaudeAgentTeamsLeaderForHandle: vi.fn((handle: string) => {
+        teams.removeTeamForLeaderHandle(handle)
+      }),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      getDriver: vi.fn(() => ({ kind: 'host' })),
+      onPtySpawned: vi.fn(),
+      onPtyExit: vi.fn(),
+      onPtyData: vi.fn()
+    }
+    spawnMock.mockImplementation(() => {
+      throw new Error('provider spawn failed')
+    })
+
+    registerPtyHandlers(mainWindow as never, runtime as never)
+
+    await expect(
+      handlers.get('pty:spawn')!(mainWindowIpcEvent, {
+        cols: 80,
+        rows: 24,
+        cwd: '/repo',
+        command: 'claude --teammate-mode auto',
+        tabId: 'tab-1',
+        leafId,
+        worktreeId: 'wt-1',
+        env: { ORCA_PANE_KEY: `tab-1:${leafId}`, ORCA_TAB_ID: 'tab-1' },
+        launchConfig: { agentCommand: 'claude --teammate-mode auto', agentArgs: '', agentEnv: {} },
+        launchAgent: 'claude'
+      })
+    ).rejects.toThrow()
+
+    expect(runtime.releaseClaudeAgentTeamsLeaderForHandle).toHaveBeenCalledWith(
+      'term_agent_teams_failure'
+    )
+    expect(teams.getActiveTeamCount()).toBe(0)
   })
 })

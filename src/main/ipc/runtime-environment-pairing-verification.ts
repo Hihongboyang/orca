@@ -1,3 +1,4 @@
+import { pairedRuntimeConnectionFromOffer } from '../../shared/paired-runtime-connection'
 import {
   addEnvironmentFromPairingCode,
   RuntimeEnvironmentStoreError
@@ -9,6 +10,7 @@ import {
 } from '../../shared/remote-pairing-verification'
 import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
 import { sendRemoteRuntimeRequest } from '../../shared/remote-runtime-client'
+import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import { redactRuntimeEnvironment } from '../../shared/runtime-environments'
 import type { RuntimeStatus } from '../../shared/runtime-types'
 
@@ -37,10 +39,13 @@ export async function verifyAndAddRuntimeEnvironmentFromPairingCode(
   let runtimeStatus: RuntimeStatus
   try {
     const response = await sendRemoteRuntimeRequest<RuntimeStatus>(
-      parsed.value.pairing,
+      pairedRuntimeConnectionFromOffer(parsed.value.pairing),
       'status.get',
       undefined,
-      15_000
+      15_000,
+      undefined,
+      undefined,
+      ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
     )
     if (!response.ok) {
       return {

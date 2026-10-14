@@ -23,7 +23,6 @@ const {
   (await import('./daemon-init-test-harness')).createDaemonInitMocks()
 )
 
-vi.mock('electron', () => moduleFactories.electron())
 vi.mock('fs', () => moduleFactories.fs())
 vi.mock('child_process', async (importOriginal) =>
   moduleFactories.childProcess(await importOriginal<Record<string, unknown>>())
@@ -40,7 +39,8 @@ vi.mock('./client', () => moduleFactories.client())
 vi.mock('./daemon-lifecycle-event', () => moduleFactories.daemonLifecycleEvent())
 vi.mock('./daemon-spawner', () => moduleFactories.daemonSpawner())
 vi.mock('./daemon-pty-adapter', () => moduleFactories.daemonPtyAdapter())
-vi.mock('../ipc/pty', () => moduleFactories.ipcPty())
+vi.mock('../ipc/pty/provider/registry', () => moduleFactories.ptyProviderRegistry())
+vi.mock('../ipc/pty/provider/listener-lifecycle', () => moduleFactories.ptyListenerLifecycle())
 
 describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
   beforeEach(() => {
@@ -71,6 +71,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {}),
+        ensureConnectedWithin: vi.fn(async () => {}),
         request: requestMock,
         disconnect: disconnectMock
       }
@@ -90,7 +91,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
       '/fake/token',
       FAKE_DAEMON_ENTRY_PATH
     )
-    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined)
+    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined, expect.any(Number))
     expect(disconnectMock).toHaveBeenCalledOnce()
     expect(killStaleDaemonMock).not.toHaveBeenCalled()
     expect(forkMock).not.toHaveBeenCalled()
@@ -111,6 +112,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {}),
+        ensureConnectedWithin: vi.fn(async () => {}),
         request: requestMock,
         disconnect: disconnectMock
       }
@@ -124,7 +126,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
 
     await launcher('/fake/socket', '/fake/token')
 
-    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined)
+    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined, expect.any(Number))
     expect(disconnectMock).toHaveBeenCalledOnce()
     expect(killStaleDaemonMock).not.toHaveBeenCalled()
     expect(forkMock).not.toHaveBeenCalled()
@@ -150,7 +152,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
         on(event: string, cb: (arg?: unknown) => void) {
           handlers[event]?.push(cb)
           if (event === 'message') {
-            queueMicrotask(() => cb({ type: 'ready', startedAtMs: 1_000_000 }))
+            queueMicrotask(() => cb({ type: 'ready', pid: 12345, startedAtMs: 1_000_000 }))
           }
           return this
         },
@@ -209,6 +211,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {}),
+        ensureConnectedWithin: vi.fn(async () => {}),
         request: requestMock,
         disconnect: disconnectMock
       }
@@ -223,7 +226,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     await launcher('/fake/socket', '/fake/token')
 
     expect(getMacDaemonSystemResolverHealthMock).toHaveBeenCalledWith('/fake/socket', '/fake/token')
-    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined)
+    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined, expect.any(Number))
     expect(disconnectMock).toHaveBeenCalledOnce()
     expect(getDaemonLaunchIdentityMock).not.toHaveBeenCalled()
     expect(killStaleDaemonMock).not.toHaveBeenCalled()
@@ -247,6 +250,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {}),
+        ensureConnectedWithin: vi.fn(async () => {}),
         request: requestMock,
         disconnect: disconnectMock
       }
@@ -260,7 +264,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
 
     await launcher('/fake/socket', '/fake/token')
 
-    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined)
+    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined, expect.any(Number))
     expect(disconnectMock).toHaveBeenCalledOnce()
     expect(killStaleDaemonMock).not.toHaveBeenCalled()
     expect(forkMock).not.toHaveBeenCalled()
@@ -283,6 +287,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {}),
+        ensureConnectedWithin: vi.fn(async () => {}),
         request: requestMock,
         disconnect: disconnectMock
       }
@@ -296,7 +301,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
 
     await launcher('/fake/socket', '/fake/token')
 
-    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined)
+    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined, expect.any(Number))
     expect(disconnectMock).toHaveBeenCalledOnce()
     expect(killStaleDaemonMock).not.toHaveBeenCalled()
     expect(forkMock).not.toHaveBeenCalled()
@@ -318,6 +323,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {}),
+        ensureConnectedWithin: vi.fn(async () => {}),
         request: requestMock,
         disconnect: vi.fn()
       }
@@ -334,7 +340,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
 
     const handle = await launcher('/fake/socket', '/fake/token')
 
-    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined)
+    expect(requestMock).toHaveBeenCalledWith('listSessions', undefined, expect.any(Number))
     expect(handle.mode).toBe('degraded-new-pty-fallback')
     expect(killStaleDaemonMock).not.toHaveBeenCalled()
     expect(forkMock).not.toHaveBeenCalled()
@@ -347,6 +353,9 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
     daemonClientMock.mockImplementationOnce(function MockDaemonClient() {
       return {
         ensureConnected: vi.fn(async () => {
+          throw new Error('daemon is wedged')
+        }),
+        ensureConnectedWithin: vi.fn(async () => {
           throw new Error('daemon is wedged')
         }),
         request: vi.fn(),
@@ -363,7 +372,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
       pid: 12345,
       on(event: string, cb: (arg?: unknown) => void) {
         if (event === 'message') {
-          queueMicrotask(() => cb({ type: 'ready', startedAtMs: 1_000_000 }))
+          queueMicrotask(() => cb({ type: 'ready', pid: 12345, startedAtMs: 1_000_000 }))
         }
         return this
       },
@@ -407,7 +416,7 @@ describe('daemon-init: runRestartDaemon (7-step sequence)', () => {
         on(event: string, cb: (arg?: unknown) => void) {
           handlers[event]?.push(cb)
           if (event === 'message') {
-            queueMicrotask(() => cb({ type: 'ready', startedAtMs: 1_000_000 }))
+            queueMicrotask(() => cb({ type: 'ready', pid: 12345, startedAtMs: 1_000_000 }))
           }
           return this
         },

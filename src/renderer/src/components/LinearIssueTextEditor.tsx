@@ -1,3 +1,4 @@
+import { ImeTextarea } from '@/lib/ime-text-field'
 import React, { useCallback, useRef, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { toast } from 'sonner'
@@ -7,7 +8,7 @@ import { useMountedRef } from '@/hooks/useMountedRef'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { getScreenSubmitShortcutLabel, isScreenSubmitShortcut } from '@/lib/screen-submit-shortcut'
-import { linearUpdateIssue } from '@/runtime/runtime-linear-client'
+import { linearUpdateIssue } from '@/runtime/runtime-linear-issue-mutations'
 import type { LinearIssue } from '../../../shared/linear/issue-types'
 import type { TaskSourceContext } from '../../../shared/task-source-context'
 import {
@@ -19,6 +20,7 @@ import {
   resolveLinearIssueTextDraftState
 } from './linear-issue-text-draft-state'
 import { translate } from '@/i18n/i18n'
+import { defaultScopeSource } from '@/lib/default-creation-host'
 
 type LinearIssueTextEditorProps = {
   issue: LinearIssue
@@ -36,7 +38,7 @@ export function LinearIssueTextEditor({
   sourceContext
 }: LinearIssueTextEditorProps): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
-  const providerSettings = sourceContext ?? settings
+  const providerSettings = sourceContext ?? defaultScopeSource(settings)
   const patchLinearIssue = useAppStore((s) => s.patchLinearIssue)
   const [draftState, setDraftState] = useState(() => createLinearIssueTextDraftState(issue))
   const [savingField, setSavingField] = useState<LinearIssueTextField | null>(null)
@@ -190,7 +192,7 @@ export function LinearIssueTextEditor({
     <div className="min-w-0">
       {fields !== 'description' ? (
         <div className="relative">
-          <textarea
+          <ImeTextarea
             value={titleDraft}
             onChange={(event) => updateTitleDraft(event.target.value)}
             onBlur={() => void saveField('title')}
@@ -225,6 +227,7 @@ export function LinearIssueTextEditor({
         <div className="relative">
           <LinearIssueMarkdownDescriptionEditor
             value={descriptionDraft}
+            imageUrls={issue.descriptionImageUrls}
             onChange={updateDescriptionDraft}
             onSave={saveDescriptionValue}
             density={density}

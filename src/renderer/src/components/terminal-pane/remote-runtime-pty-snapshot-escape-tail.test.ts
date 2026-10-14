@@ -7,6 +7,7 @@ import {
   encodeTerminalStreamJson,
   encodeTerminalStreamText
 } from '../../../../shared/terminal-stream-protocol'
+import { stubRuntimeEnvironmentBridge } from '../../runtime/runtime-environment-bridge-fixture'
 
 // Client-side wire regression for #7329: the daemon's pendingEscapeTailAnsi
 // rides the SnapshotStart JSON frame. This drives REAL binary frames through
@@ -49,11 +50,7 @@ describe('remote transport snapshot escape-tail threading (#7329)', () => {
         return { unsubscribe: vi.fn(), sendBinary: subscriptionSendBinary }
       }
     )
-    vi.stubGlobal('window', {
-      api: {
-        runtimeEnvironments: { call: runtimeCall, subscribe: runtimeSubscribe }
-      }
-    })
+    stubRuntimeEnvironmentBridge({ call: runtimeCall, subscribe: runtimeSubscribe })
   })
 
   it('delivers the SnapshotStart pendingEscapeTailAnsi to onReplayData meta', async () => {
@@ -97,7 +94,9 @@ describe('remote transport snapshot escape-tail threading (#7329)', () => {
           rows: 24,
           seq: 7,
           source: 'headless',
-          pendingEscapeTailAnsi: '\x1b[3'
+          pendingEscapeTailAnsi: '\x1b[3',
+          alternateScreen: false,
+          terminalOwner: 'shell'
         })
       }),
       encodeTerminalStreamFrame({
@@ -120,7 +119,11 @@ describe('remote transport snapshot escape-tail threading (#7329)', () => {
     await expect.poll(() => onReplayData.mock.calls.length, { timeout: 5000 }).toBeGreaterThan(0)
     expect(onReplayData).toHaveBeenCalledWith(
       'user@host:~$ ',
-      expect.objectContaining({ pendingEscapeTailAnsi: '\x1b[3' })
+      expect.objectContaining({
+        pendingEscapeTailAnsi: '\x1b[3',
+        alternateScreen: false,
+        terminalOwner: 'shell'
+      })
     )
   })
 })

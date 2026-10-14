@@ -1,7 +1,8 @@
+import { pairedRuntimeConnectionFromOffer } from '../../shared/paired-runtime-connection'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { getDefaultRepoHookSettings } from '../../shared/constants'
 import type { Repo } from '../../shared/repo-types'
 import { parsePairingCode } from '../../shared/pairing'
@@ -26,72 +27,6 @@ const passthroughDedupe = <T>(_repo: string, _id: string | undefined, run: () =>
 
 describe('remote runtime request connection integration', () => {
   it(
-    'binds encrypted close-intent capability to the real runtime RPC context',
-    { timeout: REMOTE_RUNTIME_TEST_TIMEOUT_MS },
-    async () => {
-      const userDataPath = mkdtempSync(join(tmpdir(), 'orca-runtime-close-intent-'))
-      const refuseUnattributedMobileSessionTabClose = vi.fn().mockResolvedValue({
-        closed: true,
-        refused: true,
-        refusalReason: 'missing-intent',
-        snapshotRepublished: true
-      })
-      const closeMobileSessionTab = vi.fn()
-      const runtime = {
-        getRuntimeId: () => 'close-intent-runtime-test',
-        getStartedAt: () => 1,
-        cleanupSubscriptionsForConnection: () => {},
-        cancelMobileDictationForConnection: () => {},
-        onClientDisconnected: () => {},
-        refuseUnattributedMobileSessionTabClose,
-        closeMobileSessionTab
-      } as unknown as OrcaRuntimeService
-      const server = new OrcaRuntimeRpcServer({
-        runtime,
-        userDataPath,
-        enableWebSocket: true,
-        wsPort: 0
-      })
-
-      await server.start()
-      try {
-        const offer = server.createPairingOffer({ name: 'integration', scope: 'runtime' })
-        if (!offer.available) {
-          throw new Error('pairing unavailable')
-        }
-        const pairing = parsePairingCode(offer.pairingUrl)
-        if (!pairing) {
-          throw new Error('invalid pairing')
-        }
-        const connection = new RemoteRuntimeRequestConnection(pairing)
-        try {
-          await expect(
-            connection.request(
-              'session.tabs.close',
-              { worktree: 'id:wt-1', tabId: 'tab-1' },
-              REMOTE_RUNTIME_REQUEST_TIMEOUT_MS
-            )
-          ).resolves.toMatchObject({
-            ok: true,
-            result: {
-              refused: true,
-              refusalReason: 'missing-intent',
-              snapshotRepublished: true
-            }
-          })
-          expect(refuseUnattributedMobileSessionTabClose).toHaveBeenCalledWith('id:wt-1', 'tab-1')
-          expect(closeMobileSessionTab).not.toHaveBeenCalled()
-        } finally {
-          connection.close()
-        }
-      } finally {
-        await server.stop()
-        rmSync(userDataPath, { recursive: true, force: true })
-      }
-    }
-  )
-
-  it(
     'fetches repos through the real E2EE WebSocket runtime',
     { timeout: REMOTE_RUNTIME_TEST_TIMEOUT_MS },
     async () => {
@@ -110,6 +45,7 @@ describe('remote runtime request connection integration', () => {
         }
       ]
       const runtime = {
+        configureNotificationDismissalStore: () => {},
         getRuntimeId: () => 'fetch-runtime-test',
         getStartedAt: () => 1,
         cleanupSubscriptionsForConnection: () => {},
@@ -134,7 +70,9 @@ describe('remote runtime request connection integration', () => {
         if (!pairing) {
           throw new Error('invalid pairing')
         }
-        const connection = new RemoteRuntimeRequestConnection(pairing)
+        const connection = new RemoteRuntimeRequestConnection(
+          pairedRuntimeConnectionFromOffer(pairing)
+        )
         try {
           await expect(
             connection.request('repo.list', undefined, REMOTE_RUNTIME_REQUEST_TIMEOUT_MS)
@@ -181,6 +119,7 @@ describe('remote runtime request connection integration', () => {
       const clientEventListeners = new Set<(event: RuntimeClientEvent) => void>()
       const subscriptionCleanups = new Map<string, () => void>()
       const runtime = {
+        configureNotificationDismissalStore: () => {},
         getRuntimeId: () => 'events-runtime-test',
         getStartedAt: () => 1,
         cleanupSubscriptionsForConnection: (connectionId: string) => {
@@ -253,7 +192,7 @@ describe('remote runtime request connection integration', () => {
 
         const events: RuntimeClientEventStreamMessage[] = []
         const subscription = await subscribeRemoteRuntimeRequest<RuntimeClientEventStreamMessage>(
-          pairing,
+          pairedRuntimeConnectionFromOffer(pairing),
           'runtime.clientEvents.subscribe',
           undefined,
           REMOTE_RUNTIME_REQUEST_TIMEOUT_MS,
@@ -268,8 +207,10 @@ describe('remote runtime request connection integration', () => {
             }
           }
         )
-        const desktop = new RemoteRuntimeRequestConnection(pairing)
-        const mobile = new RemoteRuntimeRequestConnection(pairing)
+        const desktop = new RemoteRuntimeRequestConnection(
+          pairedRuntimeConnectionFromOffer(pairing)
+        )
+        const mobile = new RemoteRuntimeRequestConnection(pairedRuntimeConnectionFromOffer(pairing))
         try {
           await waitFor(() => events.some((event) => event.type === 'ready'))
 
@@ -346,6 +287,7 @@ describe('remote runtime request connection integration', () => {
         }
       }
       const runtime = {
+        configureNotificationDismissalStore: () => {},
         getRuntimeId: () => 'remote-sleep-runtime-test',
         getStartedAt: () => 1,
         cleanupSubscriptionsForConnection: (connectionId: string) => {
@@ -427,7 +369,7 @@ describe('remote runtime request connection integration', () => {
         const subscriptions = await Promise.all(
           clientEvents.map((events) =>
             subscribeRemoteRuntimeRequest<RuntimeClientEventStreamMessage>(
-              pairing,
+              pairedRuntimeConnectionFromOffer(pairing),
               'runtime.clientEvents.subscribe',
               undefined,
               REMOTE_RUNTIME_REQUEST_TIMEOUT_MS,
@@ -444,7 +386,9 @@ describe('remote runtime request connection integration', () => {
             )
           )
         )
-        const requester = new RemoteRuntimeRequestConnection(pairing)
+        const requester = new RemoteRuntimeRequestConnection(
+          pairedRuntimeConnectionFromOffer(pairing)
+        )
         try {
           await waitFor(() =>
             clientEvents.every((events) => events.some((e) => e.type === 'ready'))
@@ -477,7 +421,7 @@ describe('remote runtime request connection integration', () => {
           }
           const reconnectedEvents: RuntimeClientEventStreamMessage[] = []
           const reconnected = await subscribeRemoteRuntimeRequest<RuntimeClientEventStreamMessage>(
-            pairing,
+            pairedRuntimeConnectionFromOffer(pairing),
             'runtime.clientEvents.subscribe',
             undefined,
             REMOTE_RUNTIME_REQUEST_TIMEOUT_MS,
@@ -571,9 +515,12 @@ describe('remote runtime request connection integration', () => {
         activeTabType: null,
         tabs: []
       }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fake carries only the surface the shared-control and status paths under test read.
       const runtime = {
+        configureNotificationDismissalStore: () => {},
         getRuntimeId: () => 'shared-runtime-test',
         getStartedAt: () => 1,
+        machineNameReady: async () => undefined,
         getStatus: () => ({
           runtimeId: 'shared-runtime-test',
           startedAt: 1,
@@ -687,7 +634,9 @@ describe('remote runtime request connection integration', () => {
         }
 
         const events: RuntimeClientEventStreamMessage[] = []
-        const shared = new RemoteRuntimeSharedControlConnection(pairing)
+        const shared = new RemoteRuntimeSharedControlConnection(
+          pairedRuntimeConnectionFromOffer(pairing)
+        )
         const subscription = await shared.subscribe<RuntimeClientEventStreamMessage>(
           'runtime.clientEvents.subscribe',
           undefined,

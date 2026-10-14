@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import type * as NodeFs from 'node:fs'
 import { PROTOCOL_VERSION } from './types'
 import type { Mock } from 'vitest'
 import type {
@@ -17,10 +18,7 @@ export type { MockAdapter, MockSpawner } from './daemon-init-mock-types'
 /** The module objects each test file's own hoisted `vi.mock` factories return. */
 export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
   const {
-    getPathMock,
-    getAppPathMock,
     forkMock,
-    isPackagedMock,
     probeSocketExistsMock,
     writeFileSyncMock,
     readFileSyncMock,
@@ -53,7 +51,8 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
     unbindLocalProviderListenersMock,
     rebindLocalProviderListenersMock,
     trackDaemonReplacedMock,
-    trackDaemonRetiredMock
+    trackDaemonRetiredMock,
+    trackDaemonAdoptedMock
   } = state
 
   // Why: both fakes are annotated with constructor types so the exported factories widen to
@@ -62,6 +61,7 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
     readonly launcher: unknown
     readonly ensureRunning: Mock
     readonly resetHandle: Mock
+    readonly resetRespawnWindow: Mock
     readonly shutdown: Mock
     readonly getHandle: Mock
     private socketCounter: number
@@ -84,6 +84,12 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
           if (result.mode) {
             this.handle.mode = result.mode
           }
+          if (result.quarantine) {
+            this.handle.quarantine = result.quarantine
+          }
+          if (result.adopted) {
+            this.handle.adopted = true
+          }
           return {
             socketPath: result.socketPath,
             tokenPath: result.tokenPath
@@ -99,6 +105,7 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
         }
       })
       this.resetHandle = vi.fn()
+      this.resetRespawnWindow = vi.fn()
       this.shutdown = vi.fn(async () => {})
       this.getHandle = vi.fn(() => this.handle)
       spawnerInstances.push(this as unknown as MockSpawner)
@@ -159,23 +166,17 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
   }
 
   return {
-    electron: () => ({
-      app: {
-        get isPackaged() {
-          return isPackagedMock()
-        },
-        getPath: getPathMock,
-        getAppPath: getAppPathMock,
-        getVersion: () => '1.2.3'
+    fs: async () => {
+      const actual = await vi.importActual<typeof NodeFs>('node:fs')
+      return {
+        constants: actual.constants,
+        mkdirSync: vi.fn<(...args: unknown[]) => void>(),
+        existsSync: (p: string) => probeSocketExistsMock(p) || p.includes('.pid'),
+        unlinkSync: unlinkSyncMock,
+        readFileSync: readFileSyncMock,
+        writeFileSync: writeFileSyncMock
       }
-    }),
-    fs: () => ({
-      mkdirSync: vi.fn<(...args: unknown[]) => void>(),
-      existsSync: (p: string) => probeSocketExistsMock(p) || p.includes('.pid'),
-      unlinkSync: unlinkSyncMock,
-      readFileSync: readFileSyncMock,
-      writeFileSync: writeFileSyncMock
-    }),
+    },
     net: () => ({
       connect: netConnectMock
     }),
@@ -210,6 +211,9 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
       trackDaemonReplaced: trackDaemonReplacedMock,
       trackDaemonRetired: trackDaemonRetiredMock
     }),
+    daemonAdoptionTelemetryEvent: () => ({
+      trackDaemonAdopted: trackDaemonAdoptedMock
+    }),
     daemonSpawner: () => ({
       DaemonSpawner: MockDaemonSpawner,
       getDaemonSocketPath: (_dir: string, version?: number) =>
@@ -225,9 +229,11 @@ export function createDaemonInitModuleFactories(state: DaemonInitMockState) {
     daemonPtyAdapter: () => ({
       DaemonPtyAdapter: MockDaemonPtyAdapter
     }),
-    ipcPty: () => ({
+    ptyProviderRegistry: () => ({
       getLocalPtyProvider: getLocalPtyProviderMock,
-      setLocalPtyProvider: setLocalPtyProviderMock,
+      setLocalPtyProvider: setLocalPtyProviderMock
+    }),
+    ptyListenerLifecycle: () => ({
       unbindLocalProviderListeners: unbindLocalProviderListenersMock,
       rebindLocalProviderListeners: rebindLocalProviderListenersMock
     }),

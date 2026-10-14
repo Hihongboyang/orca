@@ -27,10 +27,8 @@ import { translate } from '@/i18n/i18n'
 import { sshConnectVerb } from '@/ssh/ssh-connect-verb'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import { describeRuntimeCompatBlock } from '../../../../shared/protocol-compat'
-import {
-  clearRuntimeCompatibilityCache,
-  unwrapRuntimeRpcResult
-} from '@/runtime/runtime-rpc-client'
+import { clearRuntimeCompatibilityCache } from '@/runtime/runtime-rpc-client'
+import { unwrapRuntimeRpcResult } from '@/runtime/runtime-rpc-result'
 import type { RuntimeStatus } from '../../../../shared/runtime-types'
 import type { HostHeaderRow } from './host-section-rows'
 import { buildHostHeaderMenuModel } from './host-header-menu-items'
@@ -141,13 +139,10 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
         selector: parsed.environmentId,
         timeoutMs: 10_000
       })
-      const runtimeStatus = unwrapRuntimeRpcResult<RuntimeStatus>(response)
+      unwrapRuntimeRpcResult<RuntimeStatus>(response)
       // Why: feed the probe result into the shared store so the host header and
       // other host pickers reflect this check without a separate fetch.
-      useAppStore.getState().setRuntimeEnvironmentStatus(parsed.environmentId, {
-        status: runtimeStatus,
-        checkedAt: Date.now()
-      })
+      await useAppStore.getState().readRuntimeHostStatusSnapshots()
       toast.success(
         translate(
           'auto.components.sidebar.HostSectionHeaderMenu.7f1a2b3c4d',
@@ -160,10 +155,7 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
     } catch (err) {
       // Why: record the failed probe so the host registry can drop a previously
       // healthy verdict instead of showing stale "compatible" state.
-      useAppStore.getState().setRuntimeEnvironmentStatus(parsed.environmentId, {
-        status: null,
-        checkedAt: Date.now()
-      })
+      await useAppStore.getState().readRuntimeHostStatusSnapshots()
       toast.error(
         err instanceof Error
           ? err.message

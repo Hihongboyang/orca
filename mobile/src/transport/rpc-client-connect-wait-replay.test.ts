@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connect } from './rpc-client'
 
+vi.mock('./direct-e2ee-framing-policy', () => import('./legacy-direct-framing-test-policy'))
+
 vi.mock('./e2ee', () => ({
   generateKeyPair: () => ({
     publicKey: new Uint8Array(32),
@@ -12,6 +14,10 @@ vi.mock('./e2ee', () => ({
   encrypt: (plaintext: string) => `encrypted:${plaintext}`,
   decrypt: (raw: string) => raw.replace(/^encrypted:/, ''),
   decryptBytes: (bytes: Uint8Array) => bytes
+}))
+
+vi.mock('./mobile-runtime-capability-negotiation', () => ({
+  negotiateMobileRuntimeCapabilities: (args: { onReady: () => void }) => args.onReady()
 }))
 
 class MockWebSocket {

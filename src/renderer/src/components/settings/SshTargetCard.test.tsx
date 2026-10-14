@@ -40,8 +40,6 @@ async function renderCard(
           onClearRememberedCredential={overrides.onClearRememberedCredential ?? vi.fn()}
           onConnect={vi.fn()}
           onDisconnect={vi.fn()}
-          onTerminateSessions={vi.fn()}
-          onResetRelay={vi.fn()}
           onTest={vi.fn()}
           onEdit={vi.fn()}
           onRemove={vi.fn()}
@@ -113,5 +111,19 @@ describe('SshTargetCard clear remembered credential', () => {
       button!.click()
     })
     expect(onClearRememberedCredential).toHaveBeenCalledWith('target-1')
+  })
+})
+
+describe('an SSH host its managed server does not serve', () => {
+  it('leaves the reason to the translated status line instead of repeating main’s English', async () => {
+    const container = await renderCard({
+      targetId: 'target-1',
+      status: 'error',
+      error: 'This SSH host isn’t supported by this version of Orca.',
+      reconnectAttempt: 0,
+      managedServer: { kind: 'relay', reason: 'orcad_unavailable', detail: 'unsupported_host' }
+    })
+
+    expect(container.textContent).not.toContain('This SSH host isn’t supported')
   })
 })

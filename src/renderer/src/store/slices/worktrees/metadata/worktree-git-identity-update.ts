@@ -1,4 +1,5 @@
 import type { WorktreeSlice } from '../../worktree-helpers'
+import { runtimeTargetForWorktreeOwner } from '../listing/worktree-owner-target'
 import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
 import type { Worktree } from '../../../../../../shared/worktree/types'
 import { getRepoIdFromWorktreeId } from '../../worktree-helpers'
@@ -18,7 +19,6 @@ import {
 } from './hosted-review-link-mutation'
 import { persistWorktreeMeta } from './worktree-meta-persist'
 import { isRuntimeSelectorNotFoundError } from '../listing/runtime-worktree-rpc-errors'
-import { settingsForWorktreeOwner } from '../listing/worktree-owner-settings'
 
 export function createUpdateWorktreeGitIdentity(
   set: WorktreeSliceSet,
@@ -85,7 +85,11 @@ export function createUpdateWorktreeGitIdentity(
         }
         // Why: terminal branch switches only patch branch/head here; re-derive auto titles like full listing does.
         const currentBranchName = branchName(worktree.branch)
-        const wasAutoDerived = worktree.displayName === currentBranchName
+        const wasAutoDerived =
+          worktree.displayNameMode === 'automatic' ||
+          (worktree.displayNameMode === undefined &&
+            worktree.cliProvenance?.kind !== 'created-by-cli' &&
+            worktree.displayName === currentBranchName)
         const wasDetachedAutoDerived =
           worktree.branch === '' &&
           nextBranch !== '' &&
@@ -149,7 +153,7 @@ export function createUpdateWorktreeGitIdentity(
             }
           }
           await persistWorktreeMeta(
-            settingsForWorktreeOwner(get(), currentWorktreeId),
+            runtimeTargetForWorktreeOwner(get(), currentWorktreeId),
             currentWorktreeId,
             CLEARED_HOSTED_REVIEW_LINK_UPDATES
           )
@@ -171,7 +175,7 @@ export function createUpdateWorktreeGitIdentity(
         if (getHostedReviewLinkMutationGeneration(currentWorktreeId) !== clearGeneration) {
           // Why: a delayed branch-switch clear must not win over a newer manual relink.
           await persistWorktreeMeta(
-            settingsForWorktreeOwner(get(), currentWorktreeId),
+            runtimeTargetForWorktreeOwner(get(), currentWorktreeId),
             currentWorktreeId,
             getHostedReviewLinkUpdates(latest as Worktree)
           )

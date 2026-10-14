@@ -1,4 +1,5 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
+import { removeTreeSync } from './windows-transient-lock-removal'
 import type * as NodeFs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -34,7 +35,7 @@ const createdPaths: string[] = []
 afterEach(() => {
   openedPaths.length = 0
   for (const path of createdPaths.splice(0)) {
-    rmSync(path, { recursive: true, force: true })
+    removeTreeSync(path)
   }
 })
 
@@ -75,7 +76,11 @@ describe('secure file fsync flags', () => {
       process.umask(originalUmask)
     }
 
-    expect(openedPaths[0]).toMatchObject({ flags: 'r', ownerWritable: false })
+    // The temp file is chmodded to 0o600 before the fsync, so the fsync also covers the mode change;
+    // what matters is that it opens read-only and the published file lands at exactly 0o600.
+    expect(openedPaths[0]).toMatchObject({ flags: 'r' })
+    expect(openedPaths[0]?.path).toMatch(/record\.json\.\d+\.\d+\.[0-9a-f]+\.tmp$/)
+    expect(statSync(path).mode & 0o777).toBe(0o600)
   })
 
   posixIt('opens directories read-only before fsync', () => {

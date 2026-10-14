@@ -1,10 +1,6 @@
-import {
-  linearGetIssue,
-  linearTeamStates,
-  linearUpdateIssue,
-  type LinearMutationResult,
-  type RuntimeLinearSettings
-} from '@/runtime/runtime-linear-client'
+import { linearGetIssue, linearUpdateIssue } from '@/runtime/runtime-linear-issue-mutations'
+import { linearTeamStates } from '@/runtime/runtime-linear-project-client'
+import type { LinearMutationResult, RuntimeLinearSettings } from '@/runtime/runtime-linear-client'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { LinearWorkflowState } from '../../../../shared/linear/workspace-types'
 import type {
@@ -181,9 +177,10 @@ async function syncLinearWorktreeStatus(
     return skipped(result)
   }
 
-  const settings = args.getSettingsForWorktree
+  // Why: no source has always meant this computer.
+  const settings = (args.getSettingsForWorktree
     ? args.getSettingsForWorktree(worktreeId)
-    : args.settings
+    : args.settings) ?? { kind: 'local' }
   const linkedWorkspaceId = worktree.linkedLinearIssueWorkspaceId ?? undefined
 
   try {

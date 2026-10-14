@@ -8,8 +8,7 @@ const {
   getBitbucketRepoSlugMock,
   getGiteaRepoSlugMock,
   getHostedReviewForBranchMock,
-  getRepoSlugMock,
-  getSshGitProviderMock
+  getRepoSlugMock
 } = vi.hoisted(() => ({
   gitExecFileAsyncMock: vi.fn(),
   glabExecFileAsyncMock: vi.fn(),
@@ -18,8 +17,7 @@ const {
   getBitbucketRepoSlugMock: vi.fn(),
   getGiteaRepoSlugMock: vi.fn(),
   getHostedReviewForBranchMock: vi.fn(),
-  getRepoSlugMock: vi.fn(),
-  getSshGitProviderMock: vi.fn()
+  getRepoSlugMock: vi.fn()
 }))
 
 vi.mock('../git/runner', () => ({
@@ -53,10 +51,6 @@ vi.mock('../gitea/client', () => ({
   getGiteaPullRequest: vi.fn()
 }))
 
-vi.mock('../providers/ssh-git-dispatch', () => ({
-  getSshGitProvider: getSshGitProviderMock
-}))
-
 vi.mock('./hosted-review', () => ({
   getHostedReviewForBranch: getHostedReviewForBranchMock
 }))
@@ -75,8 +69,7 @@ function resetMocks(): void {
     getBitbucketRepoSlugMock,
     getGiteaRepoSlugMock,
     getHostedReviewForBranchMock,
-    getRepoSlugMock,
-    getSshGitProviderMock
+    getRepoSlugMock
   ]) {
     mock.mockReset()
   }
@@ -125,6 +118,7 @@ describe('GitLab self-hosted hosted review creation eligibility', () => {
 
     await expect(
       getHostedReviewCreationEligibility({
+        executionHostId: 'local',
         repoPath: '/repo',
         branch: 'feature/self-hosted-mr',
         base: 'main',
@@ -180,6 +174,7 @@ gitlab.internal
     })
 
     const result = await getHostedReviewCreationEligibility({
+      executionHostId: 'local',
       repoPath: '/repo',
       branch: 'feature/self-hosted-mr',
       base: 'main',
@@ -231,6 +226,7 @@ gitlab.internal
     })
 
     const eligibilityInput = {
+      executionHostId: 'local' as const,
       repoPath: '/repo',
       branch: 'feature/self-hosted-mr',
       base: 'main',

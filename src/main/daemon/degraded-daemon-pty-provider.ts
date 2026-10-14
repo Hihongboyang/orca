@@ -6,11 +6,11 @@ import type {
   IPtyProvider,
   PtyBackgroundStreamEvent,
   PtyDataEvent,
-  PtyProviderBufferSnapshot,
   PtyProcessInfo,
+  PtyProviderBufferSnapshot,
   PtySpawnOptions,
   PtySpawnResult
-} from '../providers/types'
+} from '../providers/pty-provider-contract'
 import {
   adoptOwningProvider,
   attachDaemonOwnedSession,
@@ -19,13 +19,15 @@ import {
 } from './degraded-daemon-session-routing'
 import { DegradedDaemonFreshSpawnRouter } from './degraded-daemon-fresh-spawn-routing'
 import { DegradedDaemonOwnerRecovery } from './degraded-daemon-owner-recovery'
+import type { WriteSettlement } from '../../shared/pty-write-settlement'
 
 export class DegradedDaemonPtyProvider implements IPtyProvider {
   readonly isDegraded = true
 
   private current: DaemonPtyAdapter
   private legacy: DaemonPtyAdapter[]
-  private fallback: IPtyProvider
+  /** Runs terminals in this process, so they die with it. */
+  readonly fallback: IPtyProvider
   private sessionProviders = new Map<string, IPtyProvider>()
   private freshSpawns: DegradedDaemonFreshSpawnRouter
   private ownerRecovery: DegradedDaemonOwnerRecovery
@@ -112,11 +114,8 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
     return this.providerFor(id).write(id, data)
   }
 
-  async writeWithSettlement(id: string, data: string): Promise<boolean> {
-    const provider = this.providerFor(id)
-    return provider.writeWithSettlement
-      ? await provider.writeWithSettlement(id, data)
-      : provider.write(id, data) !== false
+  async writeWithSettlement(id: string, data: string): Promise<WriteSettlement> {
+    return await this.providerFor(id).writeWithSettlement(id, data)
   }
 
   resize(id: string, cols: number, rows: number): void {
@@ -170,10 +169,14 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   clearBuffer = (id: string): Promise<void> => this.providerFor(id).clearBuffer(id)
+  resetInputModes = (id: string): Promise<void> => this.providerFor(id).resetInputModes(id)
 
   async closeStartupQueryAuthority(id: string): Promise<number> {
     return (await this.providerFor(id).closeStartupQueryAuthority?.(id)) ?? 0
   }
+
+  setColorQueryReplyColors: IPtyProvider['setColorQueryReplyColors'] = (colors) =>
+    this.allProviders().forEach((provider) => provider.setColorQueryReplyColors?.(colors))
 
   acknowledgeDataEvent(id: string, charCount: number): void {
     this.providerFor(id).acknowledgeDataEvent(id, charCount)
@@ -193,6 +196,9 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
   async confirmForegroundProcess(id: string): Promise<string | null> {
     return this.providerFor(id).confirmForegroundProcess?.(id) ?? null
+  }
+  async confirmShellForeground(id: string): Promise<boolean> {
+    return (await this.providerFor(id).confirmShellForeground?.(id)) ?? false
   }
 
   async serialize(ids: string[]): Promise<string> {
@@ -305,12 +311,14 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
     return shutdownDegradedFallbackSessions(this.sessionProviders, this.fallback)
   }
 
-  getCurrentDaemonSessionIds(): string[] {
-    return listProviderSessionIds(this.sessionProviders, this.current)
+  /** Sessions routed to the preserved daemon, or to the local fallback a restart also ends. */
+  getSessionIdsRoutedTo(route: 'current-daemon' | 'fallback'): string[] {
+    const target = route === 'fallback' ? this.fallback : this.current
+    return listProviderSessionIds(this.sessionProviders, target)
   }
 
   fanoutCurrentDaemonSyntheticExits(code: number): void {
-    for (const id of this.getCurrentDaemonSessionIds()) {
+    for (const id of this.getSessionIdsRoutedTo('current-daemon')) {
       this.sessionProviders.delete(id)
       // Why: restart kills listed sessions even when the adapter did not track them active.
       // oxlint-disable-next-line unicorn/no-useless-spread -- copy-safe: listeners may unsubscribe during iteration

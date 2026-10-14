@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const runProcessMock = vi.hoisted(() => vi.fn())
-vi.mock('../../shared/child-process/run-process', () => ({ runProcess: runProcessMock }))
+vi.mock('@orca/process-host', () => ({ runProcess: runProcessMock }))
 vi.mock('./wsl-executable-path', () => ({ resolveWslExecutablePath: () => 'wsl.exe' }))
 
 import {
@@ -14,8 +14,8 @@ import {
 function respondWithPayload(payload: string, code = 0): void {
   runProcessMock.mockImplementation(async (spec: { args: string[] }) => {
     const script = spec.args.at(-1) ?? ''
-    const begin = /__ORCA_WSL_CAPTURE_BEGIN_[a-z0-9]+__/.exec(script)?.[0] ?? ''
-    const end = /__ORCA_WSL_CAPTURE_END_[a-z0-9]+__/.exec(script)?.[0] ?? ''
+    const begin = (/__ORCA_WSL_CAPTURE_BEGIN_ [a-z0-9]+__/.exec(script)?.[0] ?? '').replace(' ', '')
+    const end = (/__ORCA_WSL_CAPTURE_END_ [a-z0-9]+__/.exec(script)?.[0] ?? '').replace(' ', '')
     return {
       code,
       signal: null,
@@ -57,6 +57,33 @@ describe('probing', () => {
     await getWslGuestEnvironment('Ubuntu')
     await getWslGuestEnvironment('Debian')
     expect(runProcessMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retain deadline timers after a concurrent probe settles', async () => {
+    vi.useFakeTimers()
+    try {
+      respondWithPayload(GOOD)
+      await Promise.all(Array.from({ length: 32 }, () => getWslGuestEnvironment('Ubuntu')))
+      expect(vi.getTimerCount()).toBe(0)
+      expect(runProcessMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reads a warm cache without allocating deadline timers', async () => {
+    respondWithPayload(GOOD)
+    const environment = await getWslGuestEnvironment('Ubuntu')
+    const timeout = vi.spyOn(globalThis, 'setTimeout')
+    try {
+      for (let index = 0; index < 100; index++) {
+        expect(await getWslGuestEnvironment('Ubuntu')).toBe(environment)
+      }
+      expect(timeout).not.toHaveBeenCalled()
+      expect(runProcessMock).toHaveBeenCalledTimes(1)
+    } finally {
+      timeout.mockRestore()
+    }
   })
 })
 
@@ -156,7 +183,7 @@ describe('a failed verdict does not outlive its usefulness', () => {
     expect(await getWslGuestEnvironment('Ubuntu', 9_000)).not.toBeNull()
   })
 
-  it('bounds a joiner by its own budget, not the starter\'s', async () => {
+  it("bounds a joiner by its own budget, not the starter's", async () => {
     // Joining used to mean waiting out the starter's probe, so a joiner could
     // reach its own command with 1ms left.
     let release: (v: unknown) => void = () => {}

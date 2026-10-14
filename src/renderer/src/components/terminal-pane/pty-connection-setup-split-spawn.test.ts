@@ -1,6 +1,5 @@
 import type * as React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
 import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
 import { createRect, createMeasuredElement } from './pty-connection-test-dom'
 import {
@@ -130,14 +129,14 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe('connectPanePty', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
     transportFactoryQueue = []
     createdTransportOptions = []
     storeSubscribers = []
     mockStoreState = createInitialStoreState(() => mockStoreState)
-    installTerminalTestGlobals()
+    await installTerminalTestGlobals()
   })
 
   afterEach(async () => {
@@ -548,27 +547,25 @@ describe('connectPanePty', () => {
     expect(notifyCodexPaneBoundForStaleSweep).toHaveBeenCalledWith('pty-daemon-reattach')
   })
 
-  it('replays a stable-pane adoption without submitting the SSH resume command', async () => {
+  it('replays a stable-pane adoption without submitting the resume command', async () => {
     const { connectPanePty } = await import('./pty-connection')
-    const stablePtyId = toAppSshPtyId('conn-1', 'stable-pane-session')
+    const stablePtyId = 'stable-pane-session'
     const transport = createMockTransport()
     transport.connect.mockImplementation(async ({ callbacks }) => {
       callbacks.onReattachDetermined?.()
       transport.getPtyId.mockReturnValue(stablePtyId)
-      callbacks.onData?.('NEWER-LIVE-SSH-OUTPUT')
+      callbacks.onData?.('NEWER-LIVE-OUTPUT')
       return {
         id: stablePtyId,
         isReattach: true,
-        replay: 'ORIGINAL-LIVE-SSH-OUTPUT'
+        replay: 'ORIGINAL-LIVE-OUTPUT'
       }
     })
     transportFactoryQueue.push(transport)
     mockStoreState = {
       ...mockStoreState,
       tabsByWorktree: { 'wt-1': [{ id: 'tab-1', ptyId: null }] },
-      ptyIdsByTabId: { 'tab-1': [] },
-      repos: [{ id: 'repo1', connectionId: 'conn-1' }],
-      sshConnectionStates: new Map([['conn-1', { status: 'connected' }]])
+      ptyIdsByTabId: { 'tab-1': [] }
     }
     const pane = createPane(1)
     let onDataHandler: ((data: string) => void) | null = null
@@ -595,12 +592,12 @@ describe('connectPanePty', () => {
     ;(onDataHandler as (data: string) => void)('AFTER_ADOPTION_REPLAY\r')
 
     expect(pane.container.dataset.ptyId).toBe(stablePtyId)
-    expect(writes.join('')).toContain('ORIGINAL-LIVE-SSH-OUTPUT')
-    expect(writes.join('').indexOf('ORIGINAL-LIVE-SSH-OUTPUT')).toBeLessThan(
-      writes.join('').indexOf('NEWER-LIVE-SSH-OUTPUT')
+    expect(writes.join('')).toContain('ORIGINAL-LIVE-OUTPUT')
+    expect(writes.join('').indexOf('ORIGINAL-LIVE-OUTPUT')).toBeLessThan(
+      writes.join('').indexOf('NEWER-LIVE-OUTPUT')
     )
     expect(transport.sendInput).not.toHaveBeenCalledWith('codex resume provider-session\r')
-    expect(transport.sendInput).toHaveBeenCalledWith('AFTER_ADOPTION_REPLAY\r')
+    expect(transport.sendInput).toHaveBeenCalledWith('AFTER_ADOPTION_REPLAY\r', 'query-reply')
     expect(deps.syncPanePtyLayoutBinding).toHaveBeenCalledWith(1, stablePtyId)
   })
 
@@ -642,7 +639,7 @@ describe('connectPanePty', () => {
     setFitOverride('pty-live', 'remote-desktop-fit', 80, 24)
     transport.claimViewport.mockClear()
     ;(onDataHandler as (data: string) => void)('a')
-    expect(transport.sendInput).toHaveBeenCalledWith('a')
+    expect(transport.sendInput).toHaveBeenCalledWith('a', 'query-reply')
     expect(transport.claimViewport).toHaveBeenCalledTimes(1)
     ;(onDataHandler as (data: string) => void)('b')
     // The renderer stays parked until runtime convergence is acknowledged, so a second keystroke can retry a transient failed resize.

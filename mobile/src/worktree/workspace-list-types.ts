@@ -1,4 +1,5 @@
 import type { ExecutionHostId } from '../../../src/shared/execution-host'
+import type { AgentWorkingMode } from '../../../src/shared/agent-status-types'
 import type { RuntimeWorktreeAgentRow } from '../../../src/shared/runtime-types'
 
 export type Worktree = {
@@ -8,6 +9,12 @@ export type Worktree = {
   repoId: string
   hostId?: ExecutionHostId
   terminalPlatform?: NodeJS.Platform
+  /** Display-only; set when the list spans hosts, so rows say which host they run on. */
+  hostContextLabel?: string
+  /** Resolved host for the display label; present when legacy rows omit hostId. */
+  hostContextHostId?: ExecutionHostId
+  /** Display-only; the host's health word beside its label, absent while the host is healthy. */
+  hostContextHealthLabel?: string
   repo: string
   branch: string
   displayName: string
@@ -33,7 +40,6 @@ export type Worktree = {
   isLastLineageChild?: boolean
   liveTerminalCount: number
   hasAttachedPty: boolean
-  preview: string
   unread: boolean
   lastOutputAt?: number
   isPinned: boolean
@@ -45,6 +51,7 @@ export type Worktree = {
   linkedGitLabIssue?: number | null
   comment?: string
   status?: 'working' | 'active' | 'permission' | 'done' | 'inactive'
+  workingMode?: AgentWorkingMode
   agents?: RuntimeWorktreeAgentRow[]
 }
 

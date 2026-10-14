@@ -8,7 +8,11 @@ import { useFileExplorerVisibleRowProjection } from './useFileExplorerVisibleRow
 import { FILE_EXPLORER_IGNORED_QUERY_DEBOUNCE_MS } from './use-file-explorer-ignored-paths'
 
 const getRuntimeGitIgnoredPathsMock = vi.hoisted(() => vi.fn())
-vi.mock('@/runtime/runtime-git-client', () => ({
+vi.mock('./worktree-git-owner-target', () => ({
+  getWorktreeGitOwnerTarget: () => ({ kind: 'local' })
+}))
+
+vi.mock('@/runtime/runtime-git-status-client', () => ({
   getRuntimeGitIgnoredPaths: getRuntimeGitIgnoredPathsMock
 }))
 
@@ -22,7 +26,8 @@ function useProjection(query: string) {
   })
 }
 
-function treeDirCache(loading: boolean) {
+/** A fresh object per call: a wave-batched refresh commits a new dirCache identity per wave. */
+function treeDirCache() {
   return {
     '/repo': {
       children: [
@@ -33,13 +38,12 @@ function treeDirCache(loading: boolean) {
           isDirectory: true,
           depth: 0
         }
-      ],
-      loading
+      ]
     }
   }
 }
 
-function useTreeProjection(dirCache = treeDirCache(false)) {
+function useTreeProjection(dirCache = treeDirCache()) {
   return useFileExplorerVisibleRowProjection(
     'worktree-1',
     '/repo',
@@ -105,12 +109,12 @@ describe('file explorer ignored-path query debounce', () => {
     // ignored query is an uncancellable remote git check-ignore over the whole
     // visible tree, so identical contents must not re-issue it.
     const hook = renderHook(({ dirCache }) => useTreeProjection(dirCache), {
-      initialProps: { dirCache: treeDirCache(false) }
+      initialProps: { dirCache: treeDirCache() }
     })
     expect(getRuntimeGitIgnoredPathsMock).toHaveBeenCalledTimes(1)
 
-    hook.rerender({ dirCache: treeDirCache(true) })
-    hook.rerender({ dirCache: treeDirCache(false) })
+    hook.rerender({ dirCache: treeDirCache() })
+    hook.rerender({ dirCache: treeDirCache() })
 
     expect(getRuntimeGitIgnoredPathsMock).toHaveBeenCalledTimes(1)
   })

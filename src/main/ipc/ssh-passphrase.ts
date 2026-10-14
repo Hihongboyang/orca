@@ -1,9 +1,8 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
-import type { SshCredentialKind } from '../ssh/ssh-connection-utils'
+import { SSH_CREDENTIAL_TIMEOUT_MS, type SshCredentialKind } from '../ssh/ssh-connection-utils'
 
-const CREDENTIAL_TIMEOUT_MS = 120_000
-const pendingRequests = new Map<string, { resolve: (result: SshCredentialAnswer) => void }>()
+const pendingRequests = new Map<string, { resolve: (value: string | null, remember?: boolean) => void }>()
 
 export type SshCredentialAnswer = { value: string | null; remember: boolean }
 
@@ -21,47 +20,46 @@ export function requestCredential(
   getMainWindow: () => BrowserWindow | null,
   targetId: string,
   kind: SshCredentialKind,
-  detail: string
+  detail: string,
+  echo?: boolean,
+  signal?: AbortSignal
 ): Promise<SshCredentialAnswer> {
   const requestId = randomUUID()
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      if (pendingRequests.delete(requestId)) {
-        notifyCredentialResolved(getMainWindow, requestId)
-        resolve({ value: null, remember: false })
-      }
-    }, CREDENTIAL_TIMEOUT_MS)
-
-    pendingRequests.set(requestId, {
-      resolve: (result) => {
-        clearTimeout(timer)
-        resolve(result)
-      }
-    })
-
-    const win = getMainWindow()
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('ssh:credential-request', { requestId, targetId, kind, detail })
-    } else {
-      pendingRequests.delete(requestId)
-      clearTimeout(timer)
-      notifyCredentialResolved(getMainWindow, requestId)
-      resolve({ value: null, remember: false })
+  const { promise, resolve } = Promise.withResolvers<SshCredentialAnswer>()
+  let timer: ReturnType<typeof setTimeout>
+  const finish = (value: string | null, remember = false): void => {
+    if (!pendingRequests.delete(requestId)) {
+      return
     }
-  })
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+    notifyCredentialResolved(getMainWindow, requestId)
+    resolve({ value, remember })
+  }
+  const onAbort = (): void => finish(null)
+  timer = setTimeout(() => finish(null), SSH_CREDENTIAL_TIMEOUT_MS)
+  pendingRequests.set(requestId, { resolve: finish })
+  if (signal?.aborted) {
+    finish(null)
+    return promise
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
+
+  const win = getMainWindow()
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('ssh:credential-request', { requestId, targetId, kind, detail, echo })
+  } else {
+    finish(null)
+  }
+  return promise
 }
 
-export function registerCredentialHandler(getMainWindow: () => BrowserWindow | null): void {
+export function registerCredentialHandler(): void {
   ipcMain.removeHandler('ssh:submitCredential')
   ipcMain.handle(
     'ssh:submitCredential',
     (_event, args: { requestId: string; value: string | null; remember?: boolean }) => {
-      const pending = pendingRequests.get(args.requestId)
-      if (pending) {
-        pendingRequests.delete(args.requestId)
-        notifyCredentialResolved(getMainWindow, args.requestId)
-        pending.resolve({ value: args.value, remember: args.remember === true })
-      }
+      pendingRequests.get(args.requestId)?.resolve(args.value, args.remember === true)
     }
   )
 }

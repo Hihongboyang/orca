@@ -22,7 +22,7 @@ export type PRRefreshUpstreamErrorType = PRRefreshErrorType
 
 export type PRRefreshOutcome =
   | { kind: 'found'; pr: PRInfo; fetchedAt: number }
-  | { kind: 'no-pr'; fetchedAt: number }
+  | { kind: 'no-pr'; fetchedAt: number; rejectedPRUrls?: string[] }
   | {
       kind: 'upstream-error'
       errorType: PRRefreshErrorType
@@ -68,13 +68,17 @@ export type GitHubPRRefreshCandidate = GitHubPRRefreshAlias & {
   connectionId?: string | null
   executionHostId?: string | null
   connectionState?: 'connected' | 'disconnected' | 'unknown'
+  isSelected?: boolean
+  cachedHeadOid?: string | null
   cachedFetchedAt?: number | null
   cachedHasPR?: boolean | null
   cachedPRState?: PRState | null
   cachedChecksStatus?: CheckStatus | null
   cachedMergeable?: PRMergeableState | null
   cachedMergeStateStatus?: string | null
-  localGitOptions?: { wslDistro?: string }
+  localGitOptions?: {
+    wslDistro?: string
+  }
 }
 
 export type GitHubPRRefreshSkippedReason =

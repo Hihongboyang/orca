@@ -4,14 +4,9 @@ import {
   getEditingTargetFromSshConfigHost,
   getSshTargetDraftConnectionFields,
   hasAdvancedConnectionValues,
-  isRelayGracePeriodValid,
-  parseRelayGracePeriodSeconds,
   type EditingTarget
 } from '../settings/ssh-target-draft'
-import {
-  MAX_SSH_RELAY_GRACE_PERIOD_SECONDS,
-  SSH_CONFIG_HOST_RESULT_LIMIT
-} from '../../../../shared/ssh-types'
+import { SSH_CONFIG_HOST_RESULT_LIMIT } from '../../../../shared/ssh-types'
 import type {
   SshConfigHostSummary,
   SshConfigHostListArgs,
@@ -19,13 +14,14 @@ import type {
   SshConfigHostResolution,
   SshRepoReadoption,
   SshTarget,
-  SshTargetAddResult
+  SshTargetAddResult,
+  SshTargetCreateInput
 } from '../../../../shared/ssh-types'
 import { isDuplicateSshTargetAlias } from './ssh-target-duplicate'
 
 type SshApi = {
   listTargets: () => Promise<SshTarget[]>
-  addTarget: (args: { target: Omit<SshTarget, 'id'> }) => Promise<SshTargetAddResult>
+  addTarget: (args: { target: SshTargetCreateInput }) => Promise<SshTargetAddResult>
   listConfigHosts: (args?: SshConfigHostListArgs) => Promise<SshConfigHostListResult>
   resolveConfigHost: (args: { alias: string }) => Promise<SshConfigHostResolution | null>
   importConfig: (args?: { reAdopt?: boolean }) => Promise<{
@@ -34,7 +30,10 @@ type SshApi = {
   }>
 }
 
-export async function saveNewSshHostFromForm({
+type SavedSshHost = Pick<SshTarget, 'configHost' | 'label' | 'host'>
+
+/** `ssh` is this client's own API or a paired server's (whose hosts never touch local metadata). */
+export async function saveNewSshHostFromForm<T extends SavedSshHost>({
   form,
   ssh,
   recordSshRepoReadoptions,
@@ -42,9 +41,14 @@ export async function saveNewSshHostFromForm({
   recordFeatureInteraction
 }: {
   form: EditingTarget
-  ssh: SshApi
+  ssh: {
+    listTargets: () => Promise<T[]>
+    addTarget: (args: {
+      target: SshTargetCreateInput
+    }) => Promise<{ repoReadoptions: SshRepoReadoption[] }>
+  }
   recordSshRepoReadoptions: (readoptions: readonly SshRepoReadoption[]) => void
-  setSshTargetsMetadata: (targets: SshTarget[]) => void
+  setSshTargetsMetadata: (targets: T[]) => void
   recordFeatureInteraction: (feature: 'ssh') => void
 }): Promise<'saved' | 'validation-failed' | 'failed'> {
   const { host, configHost, username, port } = getSshTargetDraftConnectionFields(form)
@@ -66,18 +70,6 @@ export async function saveNewSshHostFromForm({
     )
     return 'validation-failed'
   }
-  const graceSeconds = parseRelayGracePeriodSeconds(form)
-  if (!isRelayGracePeriodValid(form, graceSeconds)) {
-    toast.error(
-      translate(
-        'auto.components.sidebar.AddRemoteHostDialog.sshRelayGraceInvalid',
-        'Terminal timeout must be between 60 and {{value0}} seconds.',
-        { value0: MAX_SSH_RELAY_GRACE_PERIOD_SECONDS }
-      )
-    )
-    return 'validation-failed'
-  }
-
   const identityFile = form.identityFile.trim() || undefined
   const proxyCommand = form.proxyCommand.trim() || undefined
   const jumpHost = form.jumpHost.trim() || undefined
@@ -89,7 +81,6 @@ export async function saveNewSshHostFromForm({
     port,
     username,
     ...(form.gssapiAuthentication ? { gssapiAuthentication: true } : {}),
-    relayGracePeriodSeconds: graceSeconds,
     ...(identityFile ? { identityFile } : {}),
     ...(proxyCommand ? { proxyCommand } : {}),
     ...(jumpHost ? { jumpHost } : {}),

@@ -19,7 +19,7 @@ vi.mock('@/lib/agent-status', async (importOriginal) => {
 })
 
 // Mock pty-transport's eager buffer registration
-vi.mock('@/components/terminal-pane/pty-transport', () => ({
+vi.mock('@/components/terminal-pane/pty-dispatcher', () => ({
   registerEagerPtyBuffer: vi.fn().mockReturnValue({ flush: () => '', dispose: () => {} }),
   ensurePtyDispatcher: vi.fn()
 }))
@@ -457,5 +457,70 @@ describe('reconnectPersistedTerminals', () => {
         worktreeLineageById: {}
       })
     ).toEqual([])
+  })
+  it('leaves reconnect state untouched when cancellation is already signaled', async () => {
+    const store = createDaemonEnabledStore()
+    const worktreeId = 'repo1::/path/wt1'
+    const tab = makeTab({ id: 'tab1', worktreeId, ptyId: null })
+    store.setState({
+      tabsByWorktree: { [worktreeId]: [tab] },
+      ptyIdsByTabId: { tab1: [] },
+      pendingReconnectWorktreeIds: [worktreeId],
+      pendingReconnectTabByWorktree: { [worktreeId]: ['tab1'] },
+      pendingReconnectPtyIdByTabId: { tab1: 'old-pty-1' },
+      deferredSshSessionIdsByTabId: { tab1: 'deferred-pty-1' },
+      workspaceSessionReady: false
+    })
+    const before = store.getState()
+    const controller = new AbortController()
+    controller.abort()
+
+    await store.getState().reconnectPersistedTerminals(controller.signal)
+
+    const after = store.getState()
+    expect(after.tabsByWorktree).toBe(before.tabsByWorktree)
+    expect(after.ptyIdsByTabId).toBe(before.ptyIdsByTabId)
+    expect(after.pendingReconnectWorktreeIds).toBe(before.pendingReconnectWorktreeIds)
+    expect(after.pendingReconnectTabByWorktree).toBe(before.pendingReconnectTabByWorktree)
+    expect(after.pendingReconnectPtyIdByTabId).toBe(before.pendingReconnectPtyIdByTabId)
+    expect(after.deferredSshSessionIdsByTabId).toBe(before.deferredSshSessionIdsByTabId)
+    expect(after.workspaceSessionReady).toBe(false)
+  })
+  it('leaves reconnect state untouched when cancellation arrives before final publication', async () => {
+    const store = createDaemonEnabledStore()
+    const worktreeId = 'repo1::/path/wt1'
+    store.setState({
+      tabsByWorktree: {
+        [worktreeId]: [makeTab({ id: 'tab1', worktreeId, ptyId: null })]
+      },
+      ptyIdsByTabId: { tab1: [] },
+      pendingReconnectWorktreeIds: [worktreeId],
+      pendingReconnectTabByWorktree: { [worktreeId]: ['tab1'] },
+      pendingReconnectPtyIdByTabId: { tab1: 'old-pty-1' },
+      deferredSshSessionIdsByTabId: { tab1: 'deferred-pty-1' },
+      workspaceSessionReady: false
+    })
+    const before = store.getState()
+    const controller = new AbortController()
+    let abortReads = 0
+    Object.defineProperty(controller.signal, 'aborted', {
+      configurable: true,
+      get: () => {
+        abortReads += 1
+        return abortReads > 1
+      }
+    })
+
+    await store.getState().reconnectPersistedTerminals(controller.signal)
+
+    const after = store.getState()
+    expect(abortReads).toBe(2)
+    expect(after.tabsByWorktree).toBe(before.tabsByWorktree)
+    expect(after.ptyIdsByTabId).toBe(before.ptyIdsByTabId)
+    expect(after.pendingReconnectWorktreeIds).toBe(before.pendingReconnectWorktreeIds)
+    expect(after.pendingReconnectTabByWorktree).toBe(before.pendingReconnectTabByWorktree)
+    expect(after.pendingReconnectPtyIdByTabId).toBe(before.pendingReconnectPtyIdByTabId)
+    expect(after.deferredSshSessionIdsByTabId).toBe(before.deferredSshSessionIdsByTabId)
+    expect(after.workspaceSessionReady).toBe(false)
   })
 })

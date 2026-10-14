@@ -8,10 +8,8 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
-import { readRuntimeFileContent } from '@/runtime/runtime-file-client'
-import { settingsForRuntimeOwner } from '@/runtime/runtime-rpc-client'
+import { readRuntimeFileContent } from '@/runtime/runtime-file-read-client'
 import { detectLanguage } from '@/lib/language-detect'
-import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 
 const DiffViewer = lazy(() => import('./DiffViewer'))
@@ -47,7 +45,7 @@ export function SftpCompareDialog({
     let cancelled = false
     setLocalState({ kind: 'loading' })
     void readRuntimeFileContent({
-      settings: settingsForRuntimeOwner(useAppStore.getState().settings, null),
+      target: { kind: 'local' },
       filePath: localPath
     })
       .then((result) => {

@@ -90,7 +90,7 @@ describe('editor file operation owner', () => {
       '/remote/repo'
     )
 
-    expect(context.settings?.activeRuntimeEnvironmentId).toBe('hub-a')
+    expect(context.target).toEqual({ kind: 'environment', environmentId: 'hub-a' })
   })
 
   it('rejects an open tab after the same environment id is re-paired', () => {
@@ -140,6 +140,7 @@ describe('editor file operation owner', () => {
           'hub-a',
           {
             targetsHydrated: true,
+            targetGenerations: new Map(),
             targetLabels: new Map([['private', 'private']]),
             removedTargetLabels: new Map(),
             connectionStates: new Map([

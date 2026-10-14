@@ -15,6 +15,9 @@ import { skillInstallFailureFromError } from './skill-install-operation-error'
 
 const SAFE_LABEL = /^[a-z0-9][a-z0-9._-]{0,63}$/i
 const MAX_OBSERVED_COUNT = 1_000_000
+// Roots grow with the repo count, so an uncapped id list makes one log line
+// grow with the install.
+const MAX_LOGGED_DELETE_ROOT_IDS = 12
 const MAX_OBSERVED_BYTES = 64 * 1024 * 1024
 
 type SkillOperationPhase =
@@ -30,8 +33,8 @@ type SkillPhaseStart = {
   phase: SkillOperationPhase
   platform?: 'darwin' | 'linux' | 'win32' | 'other'
   packageKind?: 'single' | 'bundle'
-  transport?: 'download-grant' | 'staged-upload' | 'local-file' | 'runtime-rpc' | 'ssh-relay'
-  destination?: 'startup' | 'transaction' | 'provider-placement' | 'remote-runtime' | 'global-ssh'
+  transport?: 'download-grant' | 'staged-upload' | 'local-file' | 'runtime-rpc'
+  destination?: 'startup' | 'transaction' | 'provider-placement' | 'remote-runtime'
   compressedBytes?: number
   skillCount?: number
   provider?: SkillInstallProviderId
@@ -156,7 +159,7 @@ export function recordSkillCapabilityAbsence(input: {
     | 'skills.install.bundle.v1'
     | 'skills.preview.bundle.v1'
     | 'skills.upload.v1'
-  destination: 'remote-runtime' | 'global-ssh'
+  destination: 'remote-runtime'
 }): void {
   const span = startSpan('skill.capability', {
     attributes: {
@@ -278,4 +281,37 @@ export function startSkillBundleInstallOperation(
       }
     }
   }
+}
+
+/**
+ * One summary line per delete batch. Root *ids* are safe to log where labels
+ * and paths are not — a repo or plugin id is already a hash — matching
+ * discovery's own logging rule.
+ */
+export function recordSkillDeleteOperation(input: {
+  operationId: string
+  hostKind: 'native-host' | 'wsl'
+  skills: readonly { status: string }[]
+  rootIds: readonly string[]
+}): void {
+  const counts = new Map<string, number>()
+  for (const skill of input.skills) {
+    counts.set(skill.status, (counts.get(skill.status) ?? 0) + 1)
+  }
+  const span = startSpan('skill.delete', {
+    attributes: {
+      phase: 'delete',
+      platform: platformLabel(),
+      host: safeLabel(input.hostKind, 'unknown'),
+      skillCount: boundedNumber(input.skills.length),
+      ...Object.fromEntries(
+        [...counts].map(([status, count]) => [
+          `${safeLabel(status, 'unknown')}Count`,
+          boundedNumber(count)
+        ])
+      ),
+      rootIds: input.rootIds.slice(0, MAX_LOGGED_DELETE_ROOT_IDS).join(',')
+    }
+  })
+  span.end()
 }

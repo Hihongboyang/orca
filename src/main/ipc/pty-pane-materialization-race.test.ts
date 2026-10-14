@@ -6,7 +6,9 @@ import {
 } from './pty-ipc-mock-registry'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { makePaneKey } from '../../shared/stable-pane-id'
-import { registerPtyHandlers, getPtyIdForPaneKey, setLocalPtyProvider } from './pty'
+import { registerPtyHandlers } from './pty/register-handlers'
+import { getPtyIdForPaneKey } from './pty/pane/key-state'
+import { setLocalPtyProvider } from './pty/provider/registry'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -100,7 +102,19 @@ describe('registerPtyHandlers', () => {
       onPtyExit: vi.fn(),
       onPtyData: vi.fn()
     }
-    registerPtyHandlers(mainWindow as never, runtime as never)
+    let claimReleased = false
+    const preparedAfterRelease: boolean[] = []
+    const prepareClaudeAuth = vi.fn(async () => {
+      preparedAfterRelease.push(claimReleased)
+      return { configDir: '/tmp/claude', envPatch: {}, provenance: 'managed:test' }
+    })
+    registerPtyHandlers(
+      mainWindow as never,
+      runtime as never,
+      undefined,
+      undefined,
+      prepareClaudeAuth
+    )
     const tabId = 'tab-early-runtime-claim'
     const leafId = '44444444-4444-4444-8444-444444444444'
     const worktreeId = 'repo-1::/tmp/early-runtime-claim'
@@ -118,6 +132,7 @@ describe('registerPtyHandlers', () => {
       worktreeId,
       tabId,
       leafId,
+      command: 'claude',
       env: {
         ORCA_PANE_KEY: makePaneKey(tabId, leafId),
         ORCA_TAB_ID: tabId,
@@ -127,9 +142,127 @@ describe('registerPtyHandlers', () => {
     await new Promise<void>((resolve) => setImmediate(resolve))
     expect(providerSpawn).not.toHaveBeenCalled()
 
+    claimReleased = true
     releaseClaim()
     await expect(mounted).resolves.toMatchObject({ id: 'pty-after-runtime-claim' })
     expect(providerSpawn).toHaveBeenCalledOnce()
+    // C6 keeps "the joiner prepares before": the window prepares its launch only after the claim settles.
+    expect(preparedAfterRelease).toEqual([true])
+  })
+  it('adopts a runtime reservation created during renderer preflight', async () => {
+    type RuntimeSpawnController = {
+      spawn(args: {
+        cols: number
+        rows: number
+        command?: string
+        sessionId?: string
+        tabId: string
+        leafId: string
+        env: Record<string, string>
+      }): Promise<{ id: string }>
+    }
+    let resolveProviderSpawn!: (result: { id: string }) => void
+    const providerSpawn = vi.fn(
+      () =>
+        new Promise<{ id: string }>((resolve) => {
+          resolveProviderSpawn = resolve
+        })
+    )
+    setLocalPtyProvider({
+      spawn: providerSpawn,
+      write: vi.fn(),
+      resize: vi.fn(),
+      shutdown: vi.fn(),
+      sendSignal: vi.fn(),
+      getCwd: vi.fn(),
+      getInitialCwd: vi.fn(),
+      clearBuffer: vi.fn(),
+      acknowledgeDataEvent: vi.fn(),
+      hasChildProcesses: vi.fn(),
+      getForegroundProcess: vi.fn(),
+      serialize: vi.fn(),
+      revive: vi.fn(),
+      onData: vi.fn(() => () => {}),
+      onReplay: vi.fn(() => () => {}),
+      onExit: vi.fn(() => () => {}),
+      listProcesses: vi.fn(async () => []),
+      getDefaultShell: vi.fn(),
+      getProfiles: vi.fn()
+    } as never)
+    let controller: RuntimeSpawnController | null = null
+    const runtime = {
+      setPtyController: vi.fn((value) => {
+        controller = value
+      }),
+      createPreAllocatedTerminalHandle: vi.fn(() => 'term-concurrent'),
+      registerPreAllocatedHandleForPty: vi.fn(),
+      registerPty: vi.fn(),
+      onPtySpawned: vi.fn(),
+      onPtyExit: vi.fn(),
+      onPtyData: vi.fn()
+    }
+    let releaseAuth!: (value: {
+      configDir: string
+      envPatch: Record<string, never>
+      provenance: string
+    }) => void
+    const prepareClaudeAuth = vi.fn(
+      () =>
+        new Promise<{
+          configDir: string
+          envPatch: Record<string, never>
+          provenance: string
+        }>((resolve) => {
+          releaseAuth = resolve
+        })
+    )
+    registerPtyHandlers(
+      mainWindow as never,
+      runtime as never,
+      undefined,
+      undefined,
+      prepareClaudeAuth
+    )
+    const tabId = 'tab-mid-preflight-runtime'
+    const leafId = '55555555-5555-4555-8555-555555555555'
+    const paneKey = makePaneKey(tabId, leafId)
+    const paneArgs = {
+      cols: 80,
+      rows: 24,
+      sessionId: 'pty-runtime-reservation',
+      tabId,
+      leafId,
+      env: { ORCA_PANE_KEY: paneKey }
+    }
+
+    const rendererSpawn = handlers.get('pty:spawn')!(null, {
+      ...paneArgs,
+      command: 'claude'
+    })
+    await vi.waitFor(() => expect(prepareClaudeAuth).toHaveBeenCalledOnce())
+
+    const runtimeSpawn = (controller as unknown as RuntimeSpawnController).spawn({
+      ...paneArgs,
+      command: 'printf runtime'
+    })
+    await vi.waitFor(() => expect(providerSpawn).toHaveBeenCalledOnce())
+    releaseAuth({
+      configDir: '/tmp/claude',
+      envPatch: {},
+      provenance: 'managed:test'
+    })
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    resolveProviderSpawn({ id: 'pty-runtime-reservation' })
+
+    await expect(runtimeSpawn).resolves.toEqual({ id: 'pty-runtime-reservation' })
+    await expect(rendererSpawn).resolves.toMatchObject({
+      id: 'pty-runtime-reservation',
+      isReattach: true
+    })
+    expect(providerSpawn).toHaveBeenCalledOnce()
+    await expect(
+      handlers.get('pty:getSize')!(null, { id: 'pty-runtime-reservation' })
+    ).resolves.toEqual({ cols: 80, rows: 24 })
   })
   it('reuses renderer spawn when runtime materialization starts for the same pane', async () => {
     type RuntimeSpawnController = {
@@ -269,7 +402,8 @@ describe('registerPtyHandlers', () => {
       tabId: 'tab-race',
       leafId,
       ptyId: 'pty-renderer',
-      startupCwd: '/tmp'
+      startupCwd: '/tmp',
+      origin: 'spawn'
     })
   })
   it.each([

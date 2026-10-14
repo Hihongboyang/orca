@@ -1,14 +1,12 @@
 import { subscribeToPtyData } from '@/components/terminal-pane/pty-data-sidecar-subscriptions'
 import { subscribeToPtyExit } from '@/components/terminal-pane/pty-dispatcher'
-import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
+import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { getRemoteRuntimeTerminalMultiplexer } from '@/runtime/remote-runtime-terminal-multiplexer'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
-import {
-  getRemoteRuntimePtyEnvironmentId,
-  getRemoteRuntimeTerminalHandle
-} from '@/runtime/runtime-terminal-stream'
+import { getRemoteRuntimePtyOwner } from '@/runtime/runtime-terminal-stream'
 import { useAppStore } from '@/store'
 import { createAgentStatusOscProcessor } from '../../../shared/agent-status-osc'
+import { runtimeWaitExitCode } from '@/lib/agent-background-session-exit'
 import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-types'
 import { isMainTerminalSideEffectAuthorityForPty } from '@/components/terminal-pane/terminal-side-effect-facts-handler'
 import { resolveLiveAgentStatusConnectionRouting } from '@/lib/agent-status-connection-ownership'
@@ -67,14 +65,11 @@ export async function observeExistingAutomationSession(args: {
 
   if (isRemoteRuntimePtyId(ptyId)) {
     let disposed = false
-    const ownerEnvironmentId = getRemoteRuntimePtyEnvironmentId(ptyId)
-    const runtimeTarget = ownerEnvironmentId
-      ? ({ kind: 'environment', environmentId: ownerEnvironmentId } as const)
-      : getActiveRuntimeTarget(useAppStore.getState().settings)
-    const terminal = getRemoteRuntimeTerminalHandle(ptyId)
-    if (runtimeTarget.kind !== 'environment' || !terminal) {
+    const owner = getRemoteRuntimePtyOwner(ptyId)
+    if (!owner) {
       return () => {}
     }
+    const { target: runtimeTarget, terminal } = owner
     const stream = await getRemoteRuntimeTerminalMultiplexer(
       runtimeTarget.environmentId
     ).subscribeTerminal({
@@ -93,7 +88,7 @@ export async function observeExistingAutomationSession(args: {
     )
       .then((result) => {
         if (!disposed) {
-          onExit(result.wait.exitCode ?? 0)
+          onExit(runtimeWaitExitCode(result.wait))
         }
       })
       .catch(() => {})

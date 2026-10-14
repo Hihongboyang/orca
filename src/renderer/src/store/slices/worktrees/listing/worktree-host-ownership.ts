@@ -6,6 +6,7 @@ import { reuseEqualCatalogRows } from '../../worktree-catalog-reconciliation'
 import { getRepoIdFromWorktreeId } from '../../worktree-helpers'
 import {
   getRepoExecutionHostId,
+  getSettingsFocusedExecutionHostId,
   LOCAL_EXECUTION_HOST_ID,
   parseExecutionHostId,
   toSshExecutionHostId,
@@ -60,7 +61,9 @@ export function repoHostId(
   if (repo) {
     return getRepoExecutionHostId(repo)
   }
-  return hostId && parseExecutionHostId(hostId) ? hostId : LOCAL_EXECUTION_HOST_ID
+  return hostId && parseExecutionHostId(hostId)
+    ? hostId
+    : getSettingsFocusedExecutionHostId(state.settings)
 }
 
 export function repoHasExactlyOneExecutionHostOwner(
@@ -193,7 +196,10 @@ export function worktreeMatchesHost(
   if (worktree.hostId) {
     return worktree.hostId === hostId
   }
-  return options.unhostedWorktreesMatchHost ?? hostId === LOCAL_EXECUTION_HOST_ID
+  if (hostId === LOCAL_EXECUTION_HOST_ID) {
+    return options.unhostedWorktreesMatchHost ?? true
+  }
+  return options.unhostedWorktreesMatchHost ?? false
 }
 
 export function mergeWorktreesForHost<

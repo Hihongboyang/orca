@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  activateWebRuntimeSessionWorktree,
-  refreshWebRuntimeSessionTabsSnapshot
-} from './web-runtime-session'
+import { activateWebRuntimeSessionWorktree } from './web-runtime-worktree-activation'
+import { refreshWebRuntimeSessionTabsSnapshot } from './web-runtime-session-snapshot'
 import { clearRuntimeCompatibilityCacheForTests } from './runtime-rpc-client'
 import {
   confirmWebAgentSessionHandoffAfterCreate,
@@ -12,6 +10,8 @@ import {
 } from './web-agent-session-handoff'
 import { resetWebSessionCloseIntentForTests } from './web-session-close-intent'
 import { ENVIRONMENT_ID, WORKTREE_ID, makeSnapshot } from './web-runtime-session-test-harness'
+import { replaceRuntimeEnvironmentRevisions } from './runtime-environment-revision'
+import { stubRuntimeEnvironmentBridge } from './runtime-environment-bridge-fixture'
 
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -26,12 +26,16 @@ const mocks = vi.hoisted(() => ({
   applyWebSessionTabsSnapshot: vi.fn(),
   decideWebSessionTabsSnapshot: vi.fn(() => ({ apply: true, settlesHostMirror: true })),
   acceptReplayedWebSessionTabsSnapshot: vi.fn(),
+  getWebSessionTabsTrackingGeneration: vi.fn(() => 0),
   resolveHostSessionTabIdForWebSessionTab: vi.fn(),
   trackTerminalPaneSplit: vi.fn(),
   deliverLaunchPromptToAgentTab: vi.fn(),
   seedNativeChatLaunchDraftForAgentTab: vi.fn(),
   getRuntimeEnvironmentIdForWorktree: vi.fn(),
-  hasMaterializedWebRuntimeBrowserPage: vi.fn()
+  hasMaterializedWebRuntimeBrowserPage: vi.fn(),
+  recoverWebSessionTerminalOrphansBeforeApply: vi.fn(
+    async (_state: unknown, snapshot: unknown) => snapshot
+  )
 }))
 
 vi.mock('../store', () => ({
@@ -42,16 +46,29 @@ vi.mock('../store', () => ({
   }
 }))
 
-vi.mock('./web-session-tabs-sync', () => ({
+vi.mock('./web-session-tabs-sync/tracking-lifecycle', () => ({
   acceptReplayedWebSessionTabsSnapshot: mocks.acceptReplayedWebSessionTabsSnapshot,
-  applyWebSessionTabsSnapshot: mocks.applyWebSessionTabsSnapshot,
-  decideWebSessionTabsSnapshot: mocks.decideWebSessionTabsSnapshot,
+  getWebSessionTabsTrackingGeneration: mocks.getWebSessionTabsTrackingGeneration
+}))
+vi.mock('./web-session-tabs-sync/snapshot-api', () => ({
+  applyWebSessionTabsSnapshot: mocks.applyWebSessionTabsSnapshot
+}))
+vi.mock('./web-session-tabs-sync/tracking-decisions', () => ({
+  decideWebSessionTabsSnapshot: mocks.decideWebSessionTabsSnapshot
+}))
+vi.mock('./web-session-tabs-sync/store-patch', () => ({
   applyWebSessionTabsStorePatch: (buildPatch: (state: unknown) => unknown) => {
     mocks.setState(buildPatch)
     // The production caller invokes the returned settle receipt.
     return () => {}
-  },
+  }
+}))
+vi.mock('./web-session-tabs-sync/tracking-mappings', () => ({
   resolveHostSessionTabIdForWebSessionTab: mocks.resolveHostSessionTabIdForWebSessionTab
+}))
+
+vi.mock('./web-session-terminal-orphan-recovery', () => ({
+  recoverWebSessionTerminalOrphansBeforeApply: mocks.recoverWebSessionTerminalOrphansBeforeApply
 }))
 
 vi.mock('@/lib/feature-education-telemetry', () => ({
@@ -76,6 +93,7 @@ afterEach(() => resetWebSessionCloseIntentForTests())
 describe('refreshWebRuntimeSessionTabsSnapshot', () => {
   afterEach(() => {
     resetWebAgentSessionHandoffsForTests()
+    replaceRuntimeEnvironmentRevisions([])
     vi.unstubAllGlobals()
     vi.clearAllMocks()
   })
@@ -86,9 +104,10 @@ describe('refreshWebRuntimeSessionTabsSnapshot', () => {
       ok: true,
       result: makeSnapshot()
     })
-    vi.stubGlobal('window', {
-      api: { runtimeEnvironments: { call: runtimeCall } }
-    })
+    stubRuntimeEnvironmentBridge({ call: runtimeCall })
+    mocks.setState.mockImplementation((updater: (state: unknown) => unknown) =>
+      updater({ state: 'before' })
+    )
     mocks.applyWebSessionTabsSnapshot.mockImplementation((state) => state)
     recordWebAgentSessionHandoff({
       environmentId: ENVIRONMENT_ID,
@@ -143,6 +162,39 @@ describe('refreshWebRuntimeSessionTabsSnapshot', () => {
     })
     expect(confirmed('provisional-a')).toBe(false)
   })
+
+  it('applies the recovered snapshot instead of a transient pending-handle frame', async () => {
+    const pending = makeSnapshot()
+    const recovered = { ...pending, publicationEpoch: 'recovered', snapshotVersion: 2 }
+    const state = { state: 'before' }
+    const runtimeCall = vi.fn().mockResolvedValue({
+      id: 'list',
+      ok: true,
+      result: pending,
+      _meta: { runtimeId: 'host-runtime' }
+    })
+    stubRuntimeEnvironmentBridge({ call: runtimeCall })
+    mocks.getState.mockReturnValue(state)
+    mocks.setState.mockImplementation((updater: (current: unknown) => unknown) => updater(state))
+    mocks.recoverWebSessionTerminalOrphansBeforeApply.mockResolvedValueOnce(recovered)
+    mocks.applyWebSessionTabsSnapshot.mockImplementation((state) => state)
+    replaceRuntimeEnvironmentRevisions([{ id: ENVIRONMENT_ID, createdAt: 1, pairingRevision: 17 }])
+
+    await refreshWebRuntimeSessionTabsSnapshot(ENVIRONMENT_ID, WORKTREE_ID)
+
+    // The post-adoption read must be fenced to the runtime that answered this list.
+    expect(mocks.recoverWebSessionTerminalOrphansBeforeApply).toHaveBeenCalledWith(
+      state,
+      pending,
+      ENVIRONMENT_ID,
+      {
+        expectedEnvironmentPairingRevision: 17,
+        expectedRuntimeId: 'host-runtime',
+        getCurrentState: expect.any(Function)
+      }
+    )
+    expect(mocks.applyWebSessionTabsSnapshot).toHaveBeenCalledWith(state, recovered, ENVIRONMENT_ID)
+  })
 })
 
 describe('activateWebRuntimeSessionWorktree', () => {
@@ -175,13 +227,7 @@ describe('activateWebRuntimeSessionWorktree', () => {
       })
       .mockResolvedValueOnce({ id: 'list', ok: true, result: snapshot })
 
-    vi.stubGlobal('window', {
-      api: {
-        runtimeEnvironments: {
-          call: runtimeCall
-        }
-      }
-    })
+    stubRuntimeEnvironmentBridge({ call: runtimeCall })
 
     await expect(
       activateWebRuntimeSessionWorktree({

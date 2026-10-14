@@ -1,4 +1,4 @@
-import type { IPtyProvider } from '../providers/types'
+import type { IPtyProvider } from '../providers/pty-provider-contract'
 import type { Repo } from '../../shared/repo-types'
 import { splitWorktreeId } from '../../shared/worktree/id'
 import { mapWithConcurrency } from '../../shared/map-with-concurrency'
@@ -24,6 +24,7 @@ function withSharedProcessSnapshot(provider: IPtyProvider): IPtyProvider {
         // receiver, a provider whose own method called `this.listProcesses()`
         // would silently read this sweep's cached snapshot instead of the live
         // host — the batching must not leak past the calls it was built for.
+        // oxlint-disable-next-line anti-slop/no-reflect-get -- Proxy get trap default forward.
         const member: unknown = Reflect.get(target, property)
         return typeof member === 'function' ? member.bind(target) : member
       }
@@ -61,7 +62,6 @@ function hostFence(
 type MissingWorktreeTerminalReconciliationDeps = {
   runtime: OrcaRuntimeService
   getLocalProvider: () => IPtyProvider | null
-  getSshProvider: (connectionId: string) => IPtyProvider | undefined
   onPtyStopped?: (ptyId: string) => void
 }
 
@@ -84,9 +84,8 @@ export async function stopMissingWorktreeTerminals(
     return { stoppedWorktreeIds: [] }
   }
 
-  const ownedProvider = repo.connectionId
-    ? deps.getSshProvider(repo.connectionId)
-    : deps.getLocalProvider()
+  // Why: this process holds no SSH PTY provider; an SSH repo's sweep goes through the runtime.
+  const ownedProvider = repo.connectionId ? null : deps.getLocalProvider()
   const provider = ownedProvider ? withSharedProcessSnapshot(ownedProvider) : ownedProvider
   if (!provider) {
     const stoppedWorktreeIds = (

@@ -8,16 +8,13 @@ import type {
   ListKnownWorktreesForExecutionHostArgs,
   ProviderRequestId
 } from '../../shared/detected-worktree-provider-contract'
+import type { NestedWorktreeRemovalApproval } from '../../shared/worktree/nested-removal'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { RetiredNameRegistry } from '../../shared/worktree/retired-name-registry'
 import type {
   FolderWorkspacePathStatus,
   FolderWorkspacePathStatusRequest
 } from '../../shared/folder-workspace-path-status'
-import type {
-  HostLineageSnapshot,
-  ListDesktopLineageForHostArgs
-} from '../../shared/host-lineage-contract'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type {
   WorktreeBaseStatusEvent,
@@ -37,6 +34,7 @@ import type {
   DetectedWorktreeListResult,
   GitHubPrStartPoint,
   GitPushTarget,
+  GitWorktreeInfo,
   Worktree,
   WorktreeHeadIdentity
 } from '../../shared/worktree/types'
@@ -89,15 +87,23 @@ export type WorktreeApi = {
   }) => Promise<
     { baseBranch: string; compareBaseRef?: string; pushTarget?: GitPushTarget } | { error: string }
   >
+  previewNestedRemoval?: (args: {
+    worktreeId: string
+    hostId?: ExecutionHostId
+  }) => Promise<GitWorktreeInfo[]>
   remove: (args: {
     worktreeId: string
     hostId?: ExecutionHostId
     force?: boolean
+    approvedNestedWorktrees?: NestedWorktreeRemovalApproval[]
     // Why (#11960): distinct from `force`, which the plain Delete confirmation
     // already sets to skip the dirty-file prompt. Only an explicit Force Delete
     // may waive the proof that every PTY stopped.
     allowUnverifiedPtyStop?: boolean
     skipArchive?: boolean
+    // Why (#19334): distinct from `skipArchive` (never runs the hook) and never implied by
+    // `force` — this waives a hook that ran and FAILED.
+    allowFailedArchiveHook?: boolean
     snapshotPruneBatchId?: string
   }) => Promise<RemoveWorktreeResult>
   // Forget a workspace from Orca only (no remote Git/FS work) — for workspaces pinned to a removed/disconnected SSH host.
@@ -112,12 +118,15 @@ export type WorktreeApi = {
     expectedHead: string
     hostId?: ExecutionHostId
   }) => Promise<ForceDeleteWorktreeBranchResult>
-  updateMeta: (args: { worktreeId: string; updates: Partial<WorktreeMeta> }) => Promise<Worktree>
+  updateMeta: (args: {
+    worktreeId: string
+    executionHostId?: ExecutionHostId
+    updates: Partial<WorktreeMeta>
+  }) => Promise<Worktree | null>
   listLineage: () => Promise<{
     lineage: Record<string, WorktreeLineage>
     workspaceLineage?: Record<string, WorkspaceLineage>
   }>
-  listLineageForHost?: (args: ListDesktopLineageForHostArgs) => Promise<HostLineageSnapshot>
   updateLineage: (args: {
     worktreeId: string
     parentWorktreeId?: string

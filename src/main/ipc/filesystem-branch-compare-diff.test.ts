@@ -9,7 +9,6 @@ import {
   getBranchCompareMock,
   getBranchDiffMock,
   listWorktreesMock,
-  getSshGitProviderMock,
   resetFilesystemIpcMocks
 } from './filesystem-test-harness'
 
@@ -24,10 +23,6 @@ vi.mock(
   async () => (await import('./filesystem-test-harness')).crashBreadcrumbMock
 )
 vi.mock(
-  '../local-downloaded-folder-promotion',
-  async () => (await import('./filesystem-test-harness')).folderPromotionMock
-)
-vi.mock(
   '../git/status',
   async () => (await import('./filesystem-test-harness')).gitStatusModuleMock
 )
@@ -39,10 +34,6 @@ vi.mock('../git/worktree', async () => (await import('./filesystem-test-harness'
 vi.mock(
   '../providers/ssh-filesystem-dispatch',
   async () => (await import('./filesystem-test-harness')).sshFilesystemDispatchMock
-)
-vi.mock(
-  '../providers/ssh-git-dispatch',
-  async () => (await import('./filesystem-test-harness')).sshGitDispatchMock
 )
 vi.mock(
   '../text-generation/commit-message-text-generation',
@@ -90,10 +81,13 @@ describe('registerFilesystemHandlers', () => {
 
     await handlers.get('git:branchCompare')!(null, {
       worktreePath: WORKTREE_FEATURE_PATH,
-      baseRef: 'origin/main'
+      baseRef: 'origin/main',
+      admissionTier: 'background'
     })
 
-    expect(getBranchCompareMock).toHaveBeenCalledWith(WORKTREE_FEATURE_PATH, 'origin/main', {})
+    expect(getBranchCompareMock).toHaveBeenCalledWith(WORKTREE_FEATURE_PATH, 'origin/main', {
+      admissionTier: 'background'
+    })
   })
 
   it('allows git operations on worktrees outside repo/workspace roots', async () => {
@@ -242,43 +236,7 @@ describe('registerFilesystemHandlers', () => {
         filePath: path.join('src', 'file.ts'),
         oldPath: path.join('src', 'old-file.ts')
       },
-      {}
+      { admissionTier: 'interactive' }
     )
-  })
-
-  it('forwards the pinned head through SSH branch diff queries', async () => {
-    const result = {
-      kind: 'text',
-      originalContent: 'left',
-      modifiedContent: 'right',
-      originalIsBinary: false,
-      modifiedIsBinary: false
-    }
-    const getBranchDiff = vi.fn().mockResolvedValue([result])
-    getSshGitProviderMock.mockReturnValue({ getBranchDiff })
-
-    registerFilesystemHandlers(store as never)
-
-    await expect(
-      handlers.get('git:branchDiff')!(null, {
-        worktreePath: '/home/user/project',
-        compare: {
-          baseRef: 'origin/main',
-          baseOid: 'base-oid',
-          headOid: 'head-oid',
-          mergeBase: 'merge-base-oid'
-        },
-        filePath: 'src/file.ts',
-        oldPath: 'src/old-file.ts',
-        connectionId: 'conn-1'
-      })
-    ).resolves.toEqual(result)
-
-    expect(getBranchDiff).toHaveBeenCalledWith('/home/user/project', 'merge-base-oid', {
-      includePatch: true,
-      headOid: 'head-oid',
-      filePath: 'src/file.ts',
-      oldPath: 'src/old-file.ts'
-    })
   })
 })

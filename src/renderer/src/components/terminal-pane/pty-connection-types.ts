@@ -1,4 +1,6 @@
-import type { PtyTransport } from './pty-transport'
+import type { NotificationWorkspaceOwner } from '../../../../shared/notification-source'
+import type { AgentAttentionUnreadReason } from '@/attention/agent-attention-contract'
+import type { PtyTransport, PtyTransportRecoveryState } from './pty-transport-types'
 import type { SessionRestoredBannerReason } from './session-restored-banner-pane-state'
 import type { ReplayingPanesRef } from './replay-guard'
 import type { RestoredViewportBlankingPanesRef } from './terminal-restored-viewport'
@@ -7,15 +9,15 @@ import type { EventProps } from '../../../../shared/telemetry-events'
 import type { TerminalColorSchemeMode } from '../../../../shared/terminal-color-scheme-protocol'
 import type { StartupCommandDelivery } from '../../../../shared/codex-startup-delivery'
 import type { TuiAgent } from '../../../../shared/tui-agent'
+import type { TerminalPanePlacement } from '../../../../shared/terminal-pane-placement'
 import type { SetupSplitDirection } from '../../../../shared/worktree/launch-types'
 import type {
   AgentProviderSessionMetadata,
   SleepingAgentLaunchConfig
 } from '../../../../shared/agent-session-resume'
 import type { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
-import type { PtyTransportRecoveryState } from './pty-transport-types'
 import type { SessionOptionValue } from '../../../../shared/native-chat-session-options'
-import type { DirectSshPaneRetryAttemptId } from '@/store/slices/direct-ssh-terminal-recovery'
+import type { PtyPreconnectInputEntry } from './pty-preconnect-input-buffer'
 
 export type PtyPaneStartup = {
   command: string
@@ -55,7 +57,18 @@ export type PtyConnectionDeps = {
   tabId: string
   worktreeId: string
   cwd?: string
+  /** Delays a fresh split's spawn without delaying its renderer pane. */
+  cwdPromise?: Promise<string>
+  placement?: TerminalPanePlacement
+  /** Input handed off from a predecessor mount of the same deferred split. */
+  preconnectInput?: readonly PtyPreconnectInputEntry[]
+  /** Captures newly retained input for a remount-safe deferred split handoff. */
+  onPreconnectInput?: (input: PtyPreconnectInputEntry) => void
+  /** Releases a deferred split's detach fence when its initial spawn yields no PTY. */
+  onDeferredCwdSpawnFailed?: () => void
   startup?: PtyPaneStartup
+  /** The pane's previous PTY; main stops it before this connection's first fresh spawn. */
+  replacesPtyId?: string
   restoredLeafId?: string | null
   restoredPtyIdByLeafId?: Record<string, string>
   /** Park intent sampled at render time, before the host disposes the tab's
@@ -72,9 +85,10 @@ export type PtyConnectionDeps = {
   restoredViewportBlankingPanesRef?: RestoredViewportBlankingPanesRef
   isActiveRef: React.RefObject<boolean>
   isVisibleRef: React.RefObject<boolean>
-  onPtyExitRef: React.RefObject<(ptyId: string) => void>
+  onPtyExitRef: React.RefObject<(ptyId: string, exitCode?: number) => void>
   onAgentExitedRef: React.RefObject<(leafId: string) => void>
   onPtyErrorRef?: React.RefObject<(paneId: number, message: string) => void>
+  onPtyErrorClearedRef?: React.RefObject<(paneId: number, message?: string) => void>
   onPaneProcessDied?: (processExit: PaneProcessExit) => void
   onPtyRecoveryStateRef?: React.RefObject<
     (paneId: number, state: PtyTransportRecoveryState | null) => void
@@ -90,15 +104,10 @@ export type PtyConnectionDeps = {
   updateTabTitle: (tabId: string, title: string) => void
   setRuntimePaneTitle: (tabId: string, paneId: number, title: string) => void
   clearRuntimePaneTitle: (tabId: string, paneId: number) => void
-  updateTabPtyId: (
-    tabId: string,
-    ptyId: string,
-    replacedPtyId?: string,
-    directSshRetryAttemptId?: DirectSshPaneRetryAttemptId
-  ) => void
+  updateTabPtyId: (tabId: string, ptyId: string, replacedPtyId?: string) => void
   markWorktreeUnread: (worktreeId: string) => void
-  markTerminalTabUnread: (tabId: string) => void
-  markTerminalPaneUnread: (paneKey: string) => void
+  markTerminalTabUnread: (tabId: string, reason: AgentAttentionUnreadReason) => void
+  markTerminalPaneUnread: (paneKey: string, reason: AgentAttentionUnreadReason) => void
   clearWorktreeUnread: (worktreeId: string) => void
   clearTerminalTabUnread: (tabId: string) => void
   clearTerminalPaneUnread: (paneKey: string) => void
@@ -109,14 +118,25 @@ export type PtyConnectionDeps = {
   // main process can also emit `'test'` from the settings-pane button.
   dispatchNotification: (event: {
     source: 'terminal-bell' | 'agent-task-complete'
+    ptyId?: string | null
+    workspaceOwner?: NotificationWorkspaceOwner
     terminalTitle?: string
     paneKey?: string
     agentStatusSnapshot?: AgentCompletionStatusSnapshot
-    suppressOsNotification?: boolean
   }) => void
   setCacheTimerStartedAt: (key: string, ts: number | null) => void
   syncPanePtyLayoutBinding: (paneId: number, ptyId: string | null) => void
+  /** Stable-leaf variant for async callbacks that may outlive a PaneManager instance. */
+  syncPanePtyLayoutBindingForLeaf?: (
+    leafId: string,
+    ptyId: string | null,
+    sourcePaneId: number
+  ) => void
   clearExitedPanePtyLayoutBinding: (paneId: number, exitedPtyId: string) => void
+  /** Stable-leaf variant for async exit callbacks that may outlive a PaneManager instance. */
+  clearExitedPanePtyLayoutBindingForLeaf?: (leafId: string, exitedPtyId: string) => void
+  /** Settles the captured one-shot startup only after this pane owns a concrete PTY. */
+  onStartupBound?: () => void
   deferPtyInput?: (paneId: number, data: string, forward: (data: string) => void) => void
   /** Records a DECSET 2031 subscription seen through main's '2031-subscribe'
    *  fact (paneMode2031 + the mode at subscribe time) so later theme flips push

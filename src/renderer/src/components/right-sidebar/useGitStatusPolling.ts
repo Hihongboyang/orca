@@ -10,7 +10,7 @@ import {
   hasInteractiveActiveGitStatusConsumer,
   shouldPollActiveGitStatus
 } from '@/lib/passive-macos-app-data-access'
-import { getRightSidebarWorktreeRuntimeSettings } from './file-explorer-runtime-owner'
+import { getWorktreeGitOwnerTarget } from './worktree-git-owner-target'
 import { useGitStatusFileWatchRefresh } from './git-status-file-watch-refresh'
 import { useGitStatusPushSignalRefresh } from './git-status-push-signal-refresh'
 import { useStaleConflictOperationPolling } from './stale-conflict-operation-poll'
@@ -30,10 +30,16 @@ const STATUS_ACTIVITY_DEBOUNCE_MS = 125
 const STATUS_ACTIVITY_MIN_GAP_MS = 3000
 // Why: status scans and remote conflict probes can take longer than their
 // timers; duration-aware spacing prevents a slow task from running nonstop.
-const SLOW_GIT_POLL_BACKOFF = {
-  idleMultiplier: 5,
+export const SLOW_GIT_POLL_BACKOFF = {
+  idleMultiplier: 1,
   changeSignalMultiplier: 1,
   maxIntervalMs: 5 * 60_000
+}
+
+export function admissionTierForGitStatusRefreshReason(
+  reason: GitStatusRefreshReason
+): 'status' | 'background' {
+  return reason === 'safety' ? 'background' : 'status'
 }
 
 export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
@@ -129,9 +135,12 @@ export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
       }
       try {
         const connectionId = getConnectionId(activeWorktreeId) ?? undefined
-        const runtimeSettings = getRightSidebarWorktreeRuntimeSettings(activeWorktreeId)
+        const target = getWorktreeGitOwnerTarget(activeWorktreeId)
+        if (!target) {
+          return
+        }
         await refreshGitStatusForWorktree({
-          settings: runtimeSettings,
+          target,
           worktreeId: activeWorktreeId,
           worktreePath,
           connectionId,
@@ -143,6 +152,7 @@ export function useGitStatusPolling(options: { enabled?: boolean } = {}): void {
             fetchUpstreamStatus
           },
           request: {
+            admissionTier: admissionTierForGitStatusRefreshReason(request.reason),
             ...(request.reason === 'safety' ? { reuseLineStats: true } : {}),
             signal: request.signal,
             shouldApply: request.shouldApply,

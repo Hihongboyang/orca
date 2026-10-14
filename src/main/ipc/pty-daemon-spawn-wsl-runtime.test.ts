@@ -7,7 +7,7 @@ import {
 } from './pty-ipc-daemon-provider-fixtures'
 import { delimiter, join } from 'node:path'
 import { _setWslCachesForTests } from '../wsl'
-import { registerPtyHandlers } from './pty'
+import { registerPtyHandlers } from './pty/register-handlers'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -145,6 +145,58 @@ describe('registerPtyHandlers', () => {
           'wt-runtime',
           null,
           { tabId: 'tab-1', leafId },
+          false
+        )
+      })
+      it('restores daemon launch identity for a runtime-created reattach', async () => {
+        const incarnationId = 'runtime-reattach-incarnation'
+        const leafId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+        const daemonSpawn = setupDaemonAdapter()
+        daemonSpawn.mockResolvedValueOnce({
+          id: 'runtime-reattach',
+          incarnationId,
+          isReattach: true,
+          launchAgent: 'codex'
+        } as never)
+        const runtime = {
+          setPtyController: vi.fn(),
+          registerPty: vi.fn(),
+          onPtySpawned: vi.fn(),
+          onPtyExit: vi.fn(),
+          onPtyData: vi.fn()
+        }
+        handlers.clear()
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        const controller = runtime.setPtyController.mock.calls[0]?.[0] as {
+          spawn(args: {
+            cols: number
+            rows: number
+            worktreeId: string
+            tabId: string
+            leafId: string
+            sessionId: string
+          }): Promise<{ id: string }>
+        }
+
+        await controller.spawn({
+          cols: 80,
+          rows: 24,
+          worktreeId: 'wt-runtime-reattach',
+          tabId: 'tab-runtime-reattach',
+          leafId,
+          sessionId: 'runtime-reattach'
+        })
+
+        expect(runtime.registerPty).toHaveBeenCalledWith(
+          'runtime-reattach',
+          'wt-runtime-reattach',
+          null,
+          {
+            tabId: 'tab-runtime-reattach',
+            leafId,
+            incarnationId,
+            providerReattachLaunchIdentity: { incarnationId, launchAgent: 'codex' }
+          },
           false
         )
       })

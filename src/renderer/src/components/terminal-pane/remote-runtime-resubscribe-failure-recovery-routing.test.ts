@@ -30,6 +30,7 @@ import {
   encodeTerminalStreamText
 } from '../../../../shared/terminal-stream-protocol'
 import type { PtyTransport } from './pty-transport-types'
+import { stubRuntimeEnvironmentBridge } from '../../runtime/runtime-environment-bridge-fixture'
 
 type ResolvePaneOutcome = { handle: string } | { error: Error }
 
@@ -174,7 +175,7 @@ describe('remote runtime resubscribe failure: recovery routing', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.doUnmock('../../runtime/remote-runtime-terminal-multiplexer')
-    vi.doMock('@/runtime/web-runtime-session', () => ({
+    vi.doMock('@/runtime/web-runtime-session-snapshot', () => ({
       refreshWebRuntimeSessionTabsSnapshot: refreshSessionTabsSnapshot
     }))
     vi.clearAllMocks()
@@ -214,14 +215,7 @@ describe('remote runtime resubscribe failure: recovery routing', () => {
         return { unsubscribe: vi.fn(), sendBinary: subscriptionSendBinary }
       }
     )
-    vi.stubGlobal('window', {
-      api: {
-        runtimeEnvironments: {
-          call: runtimeCall,
-          subscribe: runtimeSubscribe
-        }
-      }
-    })
+    stubRuntimeEnvironmentBridge({ call: runtimeCall, subscribe: runtimeSubscribe })
   })
 
   it('re-resolves and adopts the replacement handle when a resubscribe fails stale', async () => {
@@ -257,7 +251,7 @@ describe('remote runtime resubscribe failure: recovery routing', () => {
     failNextResubscribeWith(new Error('terminal_handle_stale'), FIRST_HANDLE)
     dropMultiplexedStream()
 
-    await vi.waitFor(() => expect(onPtyExit).toHaveBeenCalledWith(FIRST_PTY_ID))
+    await vi.waitFor(() => expect(onPtyExit).toHaveBeenCalledWith(FIRST_PTY_ID, -1))
     expect(methodLog.filter((method) => method === 'terminal.resolvePane')).toHaveLength(2)
     expect(subscribedTerminalHandles().filter((handle) => handle === FIRST_HANDLE)).toHaveLength(1)
     expect(transport.getRecoveryState?.().phase).toBe('ended')
@@ -281,7 +275,7 @@ describe('remote runtime resubscribe failure: recovery routing', () => {
     subscribeOutcomes = [new Error('terminal_handle_stale')]
     dropMultiplexedStream()
 
-    await vi.waitFor(() => expect(onPtyExit).toHaveBeenCalledWith(FIRST_PTY_ID))
+    await vi.waitFor(() => expect(onPtyExit).toHaveBeenCalledWith(FIRST_PTY_ID, -1))
     expect(transport.getRecoveryState?.().phase).toBe('ended')
     expect(transport.getPtyId()).toBeNull()
     expect(onError).not.toHaveBeenCalled()
@@ -336,7 +330,7 @@ describe('remote runtime resubscribe failure: recovery routing', () => {
 
   it('keeps an oversized-snapshot resubscribe failure informational', async () => {
     const { REMOTE_TERMINAL_SNAPSHOT_TOO_LARGE } =
-      await import('../../runtime/remote-runtime-terminal-multiplexer')
+      await import('../../runtime/remote-runtime-terminal-snapshot-state')
     const onError = vi.fn()
     const onPtyExit = vi.fn()
     const transport = await attachLivePane({ onError, onPtyExit })

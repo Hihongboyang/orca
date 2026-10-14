@@ -1,7 +1,11 @@
+import {
+  pairedRuntimeConnectionFromOffer,
+  type PairedRuntimeConnection
+} from './paired-runtime-connection'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebSocketClient, { WebSocketServer, type WebSocket } from 'ws'
-import { encodePairingOffer, parsePairingCode, type PairingOffer } from './pairing'
+import { encodePairingOffer, parsePairingCode } from './pairing'
 import {
   decrypt,
   decryptBytes,
@@ -12,14 +16,14 @@ import {
   publicKeyToBase64
 } from './e2ee-crypto'
 import { sendRemoteRuntimeRequest, subscribeRemoteRuntimeRequest } from './remote-runtime-client'
+import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
 import { MAX_TIMER_DELAY_MS } from './timer-delay'
 import {
-  AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
-  SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
-  WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
-  WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY
+  BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
+  BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY,
+  BROWSER_NETWORK_TUNNEL_RUNTIME_CAPABILITY
 } from './protocol-version'
-import { SKILL_INSTALL_RESULT_V2_CAPABILITY } from './skill-install-capability'
+import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from './electron-remote-runtime-client-capabilities'
 
 const servers: WebSocketServer[] = []
 
@@ -75,19 +79,114 @@ describe('subscribeRemoteRuntimeRequest', () => {
     await expect(server.nextAuth).resolves.toEqual({
       type: 'e2ee_auth',
       deviceToken: 'device-token',
-      clientCapabilities: [
-        SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
-        AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
-        SKILL_INSTALL_RESULT_V2_CAPABILITY,
-        WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
-        WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY
-      ]
+      clientCapabilities: remoteRuntimeClientCapabilities()
     })
     const bytes = new Uint8Array([1, 2, 3])
     expect(subscription.sendBinary(bytes)).toBe(true)
     await expect(server.nextBinary).resolves.toEqual(bytes)
     expect(onError).not.toHaveBeenCalled()
     subscription.close()
+  })
+
+  it('binds optional capabilities and rejects a hard outbound queue overflow', async () => {
+    const server = await createSubscriptionServer()
+    const onResponse = vi.fn()
+    const onError = vi.fn()
+    const subscription = await subscribeRemoteRuntimeRequest(
+      server.pairing,
+      'network.browserTunnel',
+      {},
+      1000,
+      { onResponse, onError },
+      {
+        clientCapabilities: [BROWSER_NETWORK_TUNNEL_RUNTIME_CAPABILITY],
+        outboundQueue: { softCapBytes: 0, maxQueuedBytes: 1, maxQueuedFrames: 1 }
+      }
+    )
+
+    await vi.waitFor(() => expect(onResponse).toHaveBeenCalled())
+    await expect(server.nextAuth).resolves.toEqual({
+      type: 'e2ee_auth',
+      deviceToken: 'device-token',
+      clientCapabilities: remoteRuntimeClientCapabilities([
+        BROWSER_NETWORK_TUNNEL_RUNTIME_CAPABILITY
+      ])
+    })
+    expect(subscription.sendBinary(new Uint8Array([9]))).toBe(false)
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'remote_runtime_unavailable' })
+    )
+  })
+
+  it('accounts encrypted queues and native socket buffers in an injected aggregate budget', async () => {
+    const server = await createSubscriptionServer()
+    const releaseQueued = vi.fn()
+    const releaseSocket = vi.fn()
+    const canSend = vi.fn(() => false)
+    let readBufferedAmount: (() => number) | undefined
+    const outboundMemoryBudget = {
+      claimQueuedBytes: vi.fn(() => releaseQueued),
+      registerBufferedAmount: vi.fn((read: () => number) => {
+        readBufferedAmount = read
+        return { canSend, release: releaseSocket }
+      })
+    }
+    const onResponse = vi.fn()
+    const onClose = vi.fn()
+    const subscription = await subscribeRemoteRuntimeRequest(
+      server.pairing,
+      'network.browserTunnel',
+      {},
+      1000,
+      { onResponse, onError: vi.fn(), onClose },
+      {
+        outboundMemoryBudget,
+        outboundQueue: { softCapBytes: 1, maxQueuedBytes: 1024, maxQueuedFrames: 8 }
+      }
+    )
+    await vi.waitFor(() => expect(onResponse).toHaveBeenCalled())
+
+    expect(subscription.sendBinary(new Uint8Array([9]))).toBe(true)
+    expect(outboundMemoryBudget.registerBufferedAmount).toHaveBeenCalledOnce()
+    expect(readBufferedAmount?.()).toBeGreaterThanOrEqual(0)
+    expect(canSend).toHaveBeenCalledWith(expect.any(Number), false)
+    expect(outboundMemoryBudget.claimQueuedBytes).toHaveBeenCalledWith(expect.any(Number))
+
+    subscription.close()
+    subscription.close()
+    expect(releaseQueued).toHaveBeenCalledOnce()
+    expect(releaseSocket).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(releaseSocket).toHaveBeenCalledOnce()
+  })
+
+  it('keeps native socket bytes charged through failure cleanup and a later close', async () => {
+    const server = await createSubscriptionServer()
+    const releaseSocket = vi.fn()
+    const onError = vi.fn()
+    const subscription = await subscribeRemoteRuntimeRequest(
+      server.pairing,
+      'network.browserTunnel',
+      {},
+      1000,
+      { onResponse: vi.fn(), onError },
+      {
+        outboundMemoryBudget: {
+          claimQueuedBytes: vi.fn(() => vi.fn()),
+          registerBufferedAmount: vi.fn(() => ({ canSend: () => false, release: releaseSocket }))
+        },
+        outboundQueue: { softCapBytes: 1, maxQueuedBytes: 1, maxQueuedFrames: 1 }
+      }
+    )
+
+    expect(subscription.sendBinary(new Uint8Array([9]))).toBe(false)
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'remote_runtime_unavailable' })
+    )
+    subscription.close()
+    expect(releaseSocket).not.toHaveBeenCalled()
+
+    await vi.waitFor(() => expect(releaseSocket).toHaveBeenCalledOnce())
   })
 
   it('detaches subscription socket listeners after close', async () => {
@@ -192,11 +291,62 @@ describe('subscribeRemoteRuntimeRequest', () => {
 })
 
 describe('sendRemoteRuntimeRequest', () => {
+  it('keeps generic native authentication free of Electron placement support', async () => {
+    let receivedAuth: Record<string, unknown> | null = null
+    const server = await createOneShotServer({
+      onAuth: (auth) => {
+        receivedAuth = auth
+      }
+    })
+
+    await sendRemoteRuntimeRequest(
+      server.pairing,
+      'session.tabs.list',
+      { worktree: 'id:worktree-a' },
+      1000
+    )
+
+    expect(receivedAuth).toMatchObject({
+      clientCapabilities: remoteRuntimeClientCapabilities()
+    })
+  })
+
+  it('advertises browser placement support only when the Electron caller opts in', async () => {
+    let receivedAuth: Record<string, unknown> | null = null
+    const server = await createOneShotServer({
+      onAuth: (auth) => {
+        receivedAuth = auth
+      }
+    })
+
+    await sendRemoteRuntimeRequest(
+      server.pairing,
+      'session.tabs.list',
+      { worktree: 'id:worktree-a' },
+      1000,
+      undefined,
+      undefined,
+      ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
+    )
+
+    expect(receivedAuth).toMatchObject({
+      clientCapabilities: expect.arrayContaining([
+        BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
+        BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY
+      ])
+    })
+  })
+
   it.each([-1, 1.5, MAX_TIMER_DELAY_MS + 1, Number.MAX_SAFE_INTEGER + 1])(
     'rejects invalid timer delay %s before reading pairing data',
     async (timeoutMs) => {
       await expect(
-        sendRemoteRuntimeRequest({} as PairingOffer, 'status.get', {}, timeoutMs)
+        sendRemoteRuntimeRequest(
+          pairedRuntimeConnectionFromOffer({ endpoint: '', deviceToken: '', publicKeyB64: '' }),
+          'status.get',
+          {},
+          timeoutMs
+        )
       ).rejects.toMatchObject({ code: 'invalid_argument' })
     }
   )
@@ -337,6 +487,26 @@ describe('sendRemoteRuntimeRequest', () => {
     })
   })
 
+  it('omits optional request fields for hosts that predate them', async () => {
+    let receivedRequest: Record<string, unknown> | null = null
+    const server = await createOneShotServer({
+      onRequest: (request) => {
+        receivedRequest = request
+      }
+    })
+
+    await sendRemoteRuntimeRequest(server.pairing, 'status.get', undefined, 1000)
+
+    expect(receivedRequest).toMatchObject({
+      deviceToken: 'device-token',
+      method: 'status.get'
+    })
+    expect(receivedRequest).not.toHaveProperty('params')
+    expect(receivedRequest).not.toHaveProperty('orchestrationCapability')
+    expect(receivedRequest).not.toHaveProperty('orchestrationContractVersion')
+    expect(receivedRequest).not.toHaveProperty('orchestrationRequestId')
+  })
+
   it('detaches one-shot socket listeners after a successful response', async () => {
     const offSpy = vi.spyOn(WebSocketClient.prototype, 'off')
     try {
@@ -365,7 +535,7 @@ async function createSubscriptionServer(
     disableAutoPong?: boolean
   } = {}
 ): Promise<{
-  pairing: PairingOffer
+  pairing: PairedRuntimeConnection
   nextBinary: Promise<Uint8Array>
   nextAuth: Promise<unknown>
 }> {
@@ -378,7 +548,12 @@ async function createSubscriptionServer(
   const nextAuth = new Promise<unknown>((resolve) => {
     resolveAuth = resolve
   })
-  const wss = new WebSocketServer({ port: 0, autoPong: options.disableAutoPong !== true })
+  // host must match the 127.0.0.1 clients dial: a wildcard bind lets a foreign loopback listener claim the port and answer here.
+  const wss = new WebSocketServer({
+    host: '127.0.0.1',
+    port: 0,
+    autoPong: options.disableAutoPong !== true
+  })
   servers.push(wss)
 
   wss.on('connection', (ws) => {
@@ -452,7 +627,7 @@ async function createSubscriptionServer(
   if (!pairing) {
     throw new Error('Failed to create test pairing')
   }
-  return { pairing, nextBinary, nextAuth }
+  return { pairing: pairedRuntimeConnectionFromOffer(pairing), nextBinary, nextAuth }
 }
 
 function sendEncrypted(ws: WebSocket, sharedKey: Uint8Array, message: unknown): void {
@@ -462,9 +637,9 @@ function sendEncrypted(ws: WebSocket, sharedKey: Uint8Array, message: unknown): 
 async function createClosingServer(
   code: number,
   reason: string
-): Promise<{ pairing: PairingOffer }> {
+): Promise<{ pairing: PairedRuntimeConnection }> {
   const serverKeyPair = generateKeyPair()
-  const wss = new WebSocketServer({ port: 0 })
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   servers.push(wss)
   wss.on('connection', (ws) => {
     ws.close(code, reason)
@@ -483,12 +658,12 @@ async function createClosingServer(
   if (!pairing) {
     throw new Error('Failed to create test pairing')
   }
-  return { pairing }
+  return { pairing: pairedRuntimeConnectionFromOffer(pairing) }
 }
 
-async function createInvalidHandshakeServer(): Promise<{ pairing: PairingOffer }> {
+async function createInvalidHandshakeServer(): Promise<{ pairing: PairedRuntimeConnection }> {
   const serverKeyPair = generateKeyPair()
-  const wss = new WebSocketServer({ port: 0 })
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   servers.push(wss)
   wss.on('connection', (ws) => {
     ws.once('message', () => ws.send(JSON.stringify({ type: 'not_orca' })))
@@ -507,18 +682,19 @@ async function createInvalidHandshakeServer(): Promise<{ pairing: PairingOffer }
   if (!pairing) {
     throw new Error('Failed to create test pairing')
   }
-  return { pairing }
+  return { pairing: pairedRuntimeConnectionFromOffer(pairing) }
 }
 
 async function createOneShotServer(
   options: {
     response?: (requestId: string) => unknown
+    onAuth?: (auth: Record<string, unknown>) => void
     onRequest?: (request: Record<string, unknown>) => void
     sendUndecryptableResponse?: boolean
   } = {}
-): Promise<{ pairing: PairingOffer }> {
+): Promise<{ pairing: PairedRuntimeConnection }> {
   const serverKeyPair = generateKeyPair()
-  const wss = new WebSocketServer({ port: 0 })
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   servers.push(wss)
 
   wss.on('connection', (ws) => {
@@ -545,6 +721,7 @@ async function createOneShotServer(
         return
       }
       if (!authenticated) {
+        options.onAuth?.(JSON.parse(plaintext) as Record<string, unknown>)
         authenticated = true
         sendEncrypted(ws, sharedKey, { type: 'e2ee_authenticated' })
         return
@@ -590,5 +767,5 @@ async function createOneShotServer(
   if (!pairing) {
     throw new Error('Failed to create test pairing')
   }
-  return { pairing }
+  return { pairing: pairedRuntimeConnectionFromOffer(pairing) }
 }
