@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SftpTransferCard } from '../../store/slices/sftp'
 import { i18n } from '../../i18n/i18n'
@@ -124,5 +124,82 @@ describe('SftpTransferNotificationCard', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /Cancel/i }))
     expect(cancelTransferMock).toHaveBeenCalledWith({ transferId: 't1' })
+  })
+
+  describe('clean-success auto-dismiss', () => {
+    const cleanCard = baseCard({
+      phase: 'done',
+      outcomes: [{ path: 'a', ok: true }]
+    })
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('dismisses itself after the delay', () => {
+      const onDismiss = vi.fn()
+      render(<SftpTransferNotificationCard card={cleanCard} onDismiss={onDismiss} />)
+      act(() => {
+        vi.advanceTimersByTime(4000)
+      })
+      expect(onDismiss).toHaveBeenCalledTimes(1)
+    })
+
+    it('pauses while hovered and restarts after the pointer leaves', () => {
+      const onDismiss = vi.fn()
+      const { container } = render(
+        <SftpTransferNotificationCard card={cleanCard} onDismiss={onDismiss} />
+      )
+      const card = container.querySelector('[data-sftp-transfer-card]') as HTMLElement
+      fireEvent.mouseEnter(card)
+      act(() => {
+        vi.advanceTimersByTime(4000)
+      })
+      expect(onDismiss).not.toHaveBeenCalled()
+      fireEvent.mouseLeave(card)
+      act(() => {
+        vi.advanceTimersByTime(4000)
+      })
+      expect(onDismiss).toHaveBeenCalledTimes(1)
+    })
+
+    it('never auto-dismisses a failed batch', () => {
+      const onDismiss = vi.fn()
+      render(
+        <SftpTransferNotificationCard
+          card={baseCard({
+            phase: 'done',
+            outcomes: [{ path: 'a', ok: false, error: 'nope' }]
+          })}
+          onDismiss={onDismiss}
+        />
+      )
+      act(() => {
+        vi.advanceTimersByTime(10_000)
+      })
+      expect(onDismiss).not.toHaveBeenCalled()
+    })
+
+    it('never auto-dismisses a cancelled batch', () => {
+      const onDismiss = vi.fn()
+      render(
+        <SftpTransferNotificationCard
+          card={baseCard({
+            phase: 'done',
+            cancelled: true,
+            outcomes: [{ path: 'a', ok: true }]
+          })}
+          onDismiss={onDismiss}
+        />
+      )
+      act(() => {
+        vi.advanceTimersByTime(10_000)
+      })
+      expect(onDismiss).not.toHaveBeenCalled()
+    })
   })
 })

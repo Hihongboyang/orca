@@ -27,9 +27,18 @@ export type SftpTransferCard = {
   outcomes: SftpTransferFileOutcome[] | null
 }
 
+/** One-shot modal error for a failed explorer action (add-sftp-action-error-dialog D1). */
+export type SftpActionError = {
+  /** Parsed `sftp-error:` code ('' when unparsed). */
+  code: string
+  message: string
+}
+
 export type SftpSlice = {
   sftpProfilesByWorkspace: Record<string, SftpWorkspaceProfile[]>
   sftpTransferCards: SftpTransferCard[]
+  sftpActionError: SftpActionError | null
+  setSftpActionError: (error: SftpActionError | null) => void
   setSftpProfiles: (workspacePath: string, profiles: SftpWorkspaceProfile[]) => void
   getSftpProfiles: (workspacePath: string) => SftpWorkspaceProfile[]
   beginSftpTransferCard: (card: {
@@ -49,10 +58,14 @@ export type SftpSlice = {
   failSftpTransfer: (transferId: string, error: string, code?: string) => void
   dismissSftpTransferCard: (transferId: string) => void
 }
-
 export const createSftpSlice: StateCreator<AppState, [], [], SftpSlice> = (set, get) => ({
   sftpProfilesByWorkspace: {},
   sftpTransferCards: [],
+  sftpActionError: null,
+
+  setSftpActionError: (error) => {
+    set({ sftpActionError: error })
+  },
 
   setSftpProfiles: (workspacePath, profiles) => {
     set((state) => ({

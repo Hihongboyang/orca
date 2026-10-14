@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useAppStore } from '@/store'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getWorkspaceFileRevealOwner } from '@/lib/reveal-in-file-manager'
@@ -20,8 +20,7 @@ import { isGitRepoKind } from '../../../../shared/repo-kind'
 import { getVisibleFileExplorerWorktreePath } from './file-explorer-reset'
 import { FileExplorerBackgroundMenu } from './FileExplorerBackgroundMenu'
 import { FileExplorerFilesTreePane } from './FileExplorerFilesTreePane'
-import { useSftpExplorerMenu } from './use-sftp-explorer-menu'
-import { SftpCompareDialog } from '../editor/SftpCompareDialog'
+import { useFileExplorerSftpCompare } from './file-explorer-sftp-compare'
 import { FileExplorerNameFilter } from './FileExplorerNameFilter'
 import { FileExplorerQueryStrip } from './FileExplorerQueryStrip'
 import { FileExplorerToolbar } from './FileExplorerToolbar'
@@ -80,17 +79,10 @@ function FileExplorerFiles(): React.JSX.Element {
   const rootChoice = resolveExplorerDisplayRootChoice(rootOptions, savedRoot)
   const rootNavigation = useFileExplorerRootNavigation(activeWorktreeId, rootChoice, rootOptions)
   const worktreePath = activeWorktree?.path ?? null
-  const [sftpCompare, setSftpCompare] = useState<{
-    localPath: string
-    remoteContent: string
-    profileLabel: string
-  } | null>(null)
-  const sftpRowMenu = useSftpExplorerMenu({
+  const { sftpRowMenu, compareDialog: sftpCompareDialog } = useFileExplorerSftpCompare({
     workspacePath: worktreePath,
     // Why: SSH remote workspaces hide the SFTP submenus entirely (D10).
-    isSshWorkspace: Boolean(activeRepo?.connectionId),
-    onCompare: (content, localPath, profileLabel) =>
-      setSftpCompare({ localPath, remoteContent: content, profileLabel })
+    isSshWorkspace: Boolean(activeRepo?.connectionId)
   })
   const displayRootPath = getExplorerDisplayRootPath(worktreePath, rootChoice)
   const displayDepth = getExplorerDisplayDepth(worktreePath, displayRootPath)
@@ -390,15 +382,7 @@ function FileExplorerFiles(): React.JSX.Element {
         </div>
       </div>
 
-      {sftpCompare ? (
-        <SftpCompareDialog
-          open
-          localPath={sftpCompare.localPath}
-          remoteContent={sftpCompare.remoteContent}
-          profileLabel={sftpCompare.profileLabel}
-          onClose={() => setSftpCompare(null)}
-        />
-      ) : null}
+      {sftpCompareDialog}
       <FileExplorerBackgroundMenu
         open={bgMenuOpen}
         onOpenChange={setBgMenuOpen}

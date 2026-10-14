@@ -31,6 +31,12 @@ export type SftpApi = {
     profileId: string
     localPath: string
   }) => Promise<SftpCompareResult>
+  saveRemote: (args: {
+    workspacePath: string
+    profileId: string
+    localPath: string
+    content: string
+  }) => Promise<{ bytesWritten: number }>
   cancelTransfer: (args: { transferId: string }) => Promise<void>
   confirmHostKey: (args: {
     hostKey: string

@@ -15,6 +15,55 @@ import { translate } from '@/i18n/i18n'
 
 type HostKeyRequest = { hostKey: string; fingerprint: string }
 
+/** Code-specific copy for operation-level failures; unknown codes show the raw message only. */
+const ACTION_ERROR_COPY: Record<
+  string,
+  { titleKey: string; title: string; hintKey: string; hint: string }
+> = {
+  'profile-not-found': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.e1a2b3c4d5',
+    title: 'SFTP profile not found',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.f2b3c4d5e6',
+    hint: 'The selected profile no longer exists or references a removed SSH target.'
+  },
+  'outside-local-root': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.a3c4d5e6f7',
+    title: 'Path outside the profile root',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.b4d5e6f7a8',
+    hint: 'Pick the profile whose local root contains the selected file or folder.'
+  },
+  'compare-file-too-large': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.c5e6f7a8b9',
+    title: 'File too large to compare',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.d6f7a8b9c0',
+    hint: 'Compare is capped at 10 MB per file — download it instead.'
+  },
+  'compare-binary-refused': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.e7a8b9c0d1',
+    title: 'Binary files cannot be compared',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.f8b9c0d1e2',
+    hint: 'Compare supports text files only.'
+  },
+  'system-ssh-only-transport': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.a9c0d1e2f3',
+    title: 'Target needs system OpenSSH',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.b0d1e2f3a4',
+    hint: 'GSSAPI or exotic ProxyCommand transports are not supported for SFTP.'
+  },
+  'host-key-rejected': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.c1e2f3a4b5',
+    title: 'Host key not confirmed',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.d2f3a4b5c6',
+    hint: 'The connection was rejected because the host key was not trusted.'
+  },
+  'trash-unavailable': {
+    titleKey: 'auto.components.sftp.SftpTransferSurface.e3a4b5c6d7',
+    title: 'Recycle bin unavailable',
+    hintKey: 'auto.components.sftp.SftpTransferSurface.f4b5c6d7e8',
+    hint: 'Downloads that would overwrite a local file need a working trash.'
+  }
+}
+
 /**
  * Global SFTP surface (D13/D5): transfer-card stack, first-use host-key
  * confirmation, and the hard-block warning with its clear-trust recovery.
@@ -24,6 +73,8 @@ export function SftpTransferSurface(): React.JSX.Element | null {
   const updateProgress = useAppStore((s) => s.updateSftpTransferProgress)
   const dismissCard = useAppStore((s) => s.dismissSftpTransferCard)
   const failSftpTransfer = useAppStore((s) => s.failSftpTransfer)
+  const actionError = useAppStore((s) => s.sftpActionError)
+  const setActionError = useAppStore((s) => s.setSftpActionError)
   const [hostKeyRequest, setHostKeyRequest] = useState<HostKeyRequest | null>(null)
 
   useEffect(() => {
@@ -154,6 +205,39 @@ export function SftpTransferSurface(): React.JSX.Element | null {
                 'auto.components.sftp.SftpTransferSurface.7d3de269d0',
                 'Clear trust and re-confirm'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={actionError !== null}
+        onOpenChange={(isOpen) => !isOpen && setActionError(null)}
+      >
+        <DialogContent className="max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm text-red-400">
+              <ShieldAlert className="size-4" />
+              {translate(
+                ACTION_ERROR_COPY[actionError?.code ?? '']?.titleKey ??
+                  'auto.components.sftp.SftpTransferSurface.9d21f5b301',
+                ACTION_ERROR_COPY[actionError?.code ?? '']?.title ?? 'SFTP action failed'
+              )}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {translate(
+                ACTION_ERROR_COPY[actionError?.code ?? '']?.hintKey ??
+                  'auto.components.sftp.SftpTransferSurface.4d94a7cc26',
+                ACTION_ERROR_COPY[actionError?.code ?? '']?.hint ?? 'The action could not run.'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <code className="block break-all rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs">
+            {actionError?.message}
+          </code>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setActionError(null)}>
+              {translate('auto.components.sftp.SftpTransferSurface.bbfa773e5a', 'Close')}
             </Button>
           </DialogFooter>
         </DialogContent>

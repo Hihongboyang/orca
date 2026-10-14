@@ -10,6 +10,7 @@ export const SFTP_DELETE_PROFILE_CHANNEL = 'sftp:delete-profile'
 export const SFTP_UPLOAD_CHANNEL = 'sftp:upload'
 export const SFTP_DOWNLOAD_CHANNEL = 'sftp:download'
 export const SFTP_COMPARE_CHANNEL = 'sftp:compare'
+export const SFTP_SAVE_REMOTE_CHANNEL = 'sftp:save-remote'
 export const SFTP_CANCEL_TRANSFER_CHANNEL = 'sftp:cancel-transfer'
 export const SFTP_CONFIRM_HOST_KEY_CHANNEL = 'sftp:confirm-host-key'
 export const SFTP_CLEAR_HOST_TRUST_CHANNEL = 'sftp:clear-host-trust'
@@ -95,6 +96,18 @@ export type SftpTransferError = {
 /** Feeds the read-only DiffViewer compare tab (D8). */
 export type SftpCompareResult = {
   content: string
+}
+
+/** Save-back payload for the compare dialog's edited remote pane. */
+export type SftpSaveRemoteArgs = {
+  workspacePath: string
+  profileId: string
+  localPath: string
+  content: string
+}
+
+export type SftpSaveRemoteResult = {
+  bytesWritten: number
 }
 
 /** Remote read cap for compare, in bytes (D8). */

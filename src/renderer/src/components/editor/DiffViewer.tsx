@@ -49,6 +49,7 @@ export default function DiffViewer({
   addLineCommentPlaceholder,
   onContentChange,
   onSave,
+  onDiffEditorReady,
   largeDiffRenderLimit,
   largeDiffSaveContentAvailable
 }: DiffViewerProps): React.JSX.Element {
@@ -188,11 +189,9 @@ export default function DiffViewer({
   onSaveRef.current = onSave
   const onContentChangeRef = useRef(onContentChange)
   onContentChangeRef.current = onContentChange
-
+  const propsRef = useRef({ relativePath, language, onSave, onDiffEditorReady })
+  propsRef.current = { relativePath, language, onSave, onDiffEditorReady }
   const { setupCopy, toastNode } = useContextualCopySetup()
-
-  const propsRef = useRef({ relativePath, language, onSave })
-  propsRef.current = { relativePath, language, onSave }
   const currentDiffModelPaths = useDiffViewerLargeDiffLifecycle({
     limited: renderLimit.limited,
     modelKey,
@@ -217,6 +216,7 @@ export default function DiffViewer({
           diffWordWrapRef.current
         )
       })
+      propsRef.current.onDiffEditorReady?.(diffEditor)
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
 
@@ -274,6 +274,16 @@ export default function DiffViewer({
       } else {
         diffEditor.focus()
       }
+
+      // Why: clear modifiedEditor on dispose so decorator effects don't call into a disposed Monaco editor.
+      diffEditor.onDidDispose(() => {
+        lineNumberOptionsSubRef.current?.dispose()
+        lineNumberOptionsSubRef.current = null
+        diffEditorRef.current = null
+        propsRef.current.onDiffEditorReady?.(null)
+        unregisterDiffEditor(diffEditor)
+        setModifiedEditor(null)
+      })
     },
     [editable, setupCopy, modelKey, filePath, sideBySide, registerDiffEditor, unregisterDiffEditor]
   )

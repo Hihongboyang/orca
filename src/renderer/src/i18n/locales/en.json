@@ -16434,7 +16434,15 @@
         "SftpCompareDialog": {
           "8173ee67c1": "SFTP compare — {{value0}}",
           "6eb78fac8b": "Local (left) vs remote (right), read-only — {{value0}}",
-          "9d4f8f1c1a": "Loading comparison..."
+          "9d4f8f1c1a": "Loading comparison...",
+          "5bd42baa19": "Local (left, read-only) vs remote (right, editable) — {{value0}}",
+          "27c9c39b53": "Previous change",
+          "d4277960cd": "Next change",
+          "1fbb1f9d51": "Apply change",
+          "9c40c81d88": "Apply all",
+          "0f21f7d3d6": "Unsaved changes",
+          "756dbb7b4c": "Saved",
+          "4e190b4182": "Save"
         }
       },
       "diff": {
@@ -18237,7 +18245,23 @@
           "60b450e9d2": "Trust and continue",
           "fac7035be8": "Host key changed — connection blocked",
           "bbfa773e5a": "Close",
-          "7d3de269d0": "Clear trust and re-confirm"
+          "7d3de269d0": "Clear trust and re-confirm",
+          "9d21f5b301": "SFTP action failed",
+          "4d94a7cc26": "The action could not run.",
+          "e1a2b3c4d5": "SFTP profile not found",
+          "f2b3c4d5e6": "The selected profile no longer exists or references a removed SSH target.",
+          "a3c4d5e6f7": "Path outside the profile root",
+          "b4d5e6f7a8": "Pick the profile whose local root contains the selected file or folder.",
+          "c5e6f7a8b9": "File too large to compare",
+          "d6f7a8b9c0": "Compare is capped at 10 MB per file — download it instead.",
+          "e7a8b9c0d1": "Binary files cannot be compared",
+          "f8b9c0d1e2": "Compare supports text files only.",
+          "a9c0d1e2f3": "Target needs system OpenSSH",
+          "b0d1e2f3a4": "GSSAPI or exotic ProxyCommand transports are not supported for SFTP.",
+          "c1e2f3a4b5": "Host key not confirmed",
+          "d2f3a4b5c6": "The connection was rejected because the host key was not trusted.",
+          "e3a4b5c6d7": "Recycle bin unavailable",
+          "f4b5c6d7e8": "Downloads that would overwrite a local file need a working trash."
         }
       }
     },

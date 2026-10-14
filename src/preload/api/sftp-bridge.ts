@@ -22,6 +22,12 @@ export const sftpApi = {
   }) => ipcRenderer.invoke('sftp:download', args),
   compare: (args: { workspacePath: string; profileId: string; localPath: string }) =>
     ipcRenderer.invoke('sftp:compare', args),
+  saveRemote: (args: {
+    workspacePath: string
+    profileId: string
+    localPath: string
+    content: string
+  }) => ipcRenderer.invoke('sftp:save-remote', args),
   cancelTransfer: (args: { transferId: string }) =>
     ipcRenderer.invoke('sftp:cancel-transfer', args),
   confirmHostKey: (args: { hostKey: string; fingerprint: string; accepted: boolean }) =>

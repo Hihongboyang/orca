@@ -12,6 +12,7 @@ import {
   SFTP_UPLOAD_CHANNEL,
   SFTP_DOWNLOAD_CHANNEL,
   SFTP_COMPARE_CHANNEL,
+  SFTP_SAVE_REMOTE_CHANNEL,
   SFTP_CANCEL_TRANSFER_CHANNEL,
   SFTP_CONFIRM_HOST_KEY_CHANNEL,
   SFTP_CLEAR_HOST_TRUST_CHANNEL,
@@ -239,6 +240,7 @@ describe('sftp IPC handlers', () => {
       SFTP_UPLOAD_CHANNEL,
       SFTP_DOWNLOAD_CHANNEL,
       SFTP_COMPARE_CHANNEL,
+      SFTP_SAVE_REMOTE_CHANNEL,
       SFTP_CANCEL_TRANSFER_CHANNEL,
       SFTP_CONFIRM_HOST_KEY_CHANNEL,
       SFTP_CLEAR_HOST_TRUST_CHANNEL
@@ -311,6 +313,58 @@ describe('sftp IPC handlers', () => {
           }
         })
       ).rejects.toThrow(/target/i)
+    })
+  })
+
+  describe('save-remote dispatch', () => {
+    it('writes the edited content to the mirrored remote path', async () => {
+      remoteTree['/srv/app/src/main.ts'] = { type: 'file', content: 'old remote' }
+      mkdirSync(join(localRoot, 'src'), { recursive: true })
+      writeFileSync(join(localRoot, 'src', 'main.ts'), 'local side')
+      const saved = (await invoke(SFTP_SAVE_PROFILE_CHANNEL, {
+        workspacePath: localRoot,
+        profile: {
+          id: '',
+          label: 'prod',
+          targetId: 'ssh-1',
+          localRoot,
+          defaultRemoteDir: '/srv/app'
+        }
+      })) as { id: string }
+
+      const result = (await invoke(SFTP_SAVE_REMOTE_CHANNEL, {
+        workspacePath: localRoot,
+        profileId: saved.id,
+        localPath: join(localRoot, 'src', 'main.ts'),
+        content: 'edited remote'
+      })) as { bytesWritten: number }
+
+      expect(result.bytesWritten).toBe('edited remote'.length)
+      expect(remoteWrites['/srv/app/src/main.ts']).toBe('edited remote')
+    })
+
+    it('refuses payloads over the 10 MB cap with the typed code', async () => {
+      mkdirSync(join(localRoot, 'src'), { recursive: true })
+      writeFileSync(join(localRoot, 'src', 'main.ts'), 'local')
+      const saved = (await invoke(SFTP_SAVE_PROFILE_CHANNEL, {
+        workspacePath: localRoot,
+        profile: {
+          id: '',
+          label: 'prod',
+          targetId: 'ssh-1',
+          localRoot,
+          defaultRemoteDir: '/srv/app'
+        }
+      })) as { id: string }
+
+      await expect(
+        invoke(SFTP_SAVE_REMOTE_CHANNEL, {
+          workspacePath: localRoot,
+          profileId: saved.id,
+          localPath: join(localRoot, 'src', 'main.ts'),
+          content: 'x'.repeat(10 * 1024 * 1024 + 1)
+        })
+      ).rejects.toThrow('compare-file-too-large')
     })
   })
 
